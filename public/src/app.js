@@ -253,9 +253,8 @@ app.uid = null;
 
 		app.replaceSelfLinks();
 
-		setTimeout(function () {
-			window.scrollTo(0, 1); // rehide address bar on mobile after page load completes.
-		}, 100);
+		// Scroll back to top of page
+		window.scrollTo(0, 0);
 	};
 
 	app.showLoginMessage = function () {
@@ -364,7 +363,7 @@ app.uid = null;
 		}
 	};
 
-	function exposeConfigToTemplates() {
+	app.exposeConfigToTemplates = function() {
 		$(document).ready(function() {
 			templates.setGlobal('loggedIn', config.loggedIn);
 			templates.setGlobal('relative_path', RELATIVE_PATH);
@@ -435,11 +434,9 @@ app.uid = null;
 		require(['search', 'mousetrap'], function(search, Mousetrap) {
 			$('#search-form').on('submit', function (e) {
 				e.preventDefault();
-				var input = $(this).find('input'),
-					term = input.val();
+				var input = $(this).find('input');
 
-
-				search.query(term, function() {
+				search.query({term: input.val(), in: 'posts'}, function() {
 					input.val('');
 				});
 			});
@@ -499,7 +496,8 @@ app.uid = null;
 
 
 			$window.trigger('action:ajaxify.start', {
-				url: url
+				url: url,
+				tpl_url: tpl_url
 			});
 
 			collapseNavigationOnClick();
@@ -541,7 +539,8 @@ app.uid = null;
 				ajaxify.widgets.render(tpl_url, url, function() {
 					app.processPage();
 					$window.trigger('action:ajaxify.end', {
-						url: url
+						url: url,
+						tpl_url: tpl_url
 					});
 				});
 			});
@@ -568,8 +567,11 @@ app.uid = null;
 				}
 			});
 
-			require(['taskbar'], function(taskbar) {
+			require(['taskbar', 'helpers'], function(taskbar, helpers) {
 				taskbar.init();
+
+				// templates.js helpers
+				helpers.register();
 			});
 		});
 	};
@@ -596,7 +598,7 @@ app.uid = null;
 
 	showWelcomeMessage = window.location.href.indexOf('loggedin') !== -1;
 
-	exposeConfigToTemplates();
+	app.exposeConfigToTemplates();
 
 	socketIOConnect();
 

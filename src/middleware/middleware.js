@@ -69,7 +69,7 @@ middleware.redirectToAccountIfLoggedIn = function(req, res, next) {
 
 middleware.redirectToLoginIfGuest = function(req, res, next) {
 	if (!req.user || parseInt(req.user.uid, 10) === 0) {
-		req.session.returnTo = nconf.get('relative_path') + req.url;
+		req.session.returnTo = nconf.get('relative_path') + req.url.replace(/^\/api/, '');
 		return res.redirect(nconf.get('relative_path') + '/login');
 	} else {
 		next();
@@ -83,7 +83,7 @@ middleware.addSlug = function(req, res, next) {
 				return next(err);
 			}
 
-			var url = name + encodeURI(slug);
+			var url = nconf.get('relative_path') + name + encodeURI(slug);
 
 			if (res.locals.isAPI) {
 				res.status(302).json(url);
@@ -95,13 +95,17 @@ middleware.addSlug = function(req, res, next) {
 
 	if (!req.params.slug) {
 		if (req.params.category_id) {
-			redirect(categories.getCategoryField, req.params.category_id, '/category/');
+			return redirect(categories.getCategoryField, req.params.category_id, '/category/');
 		} else if (req.params.topic_id) {
-			redirect(topics.getTopicField, req.params.topic_id, '/topic/');
-		} else {
-			return next();
+			return redirect(topics.getTopicField, req.params.topic_id, '/topic/');
 		}
-		return;
+	}
+	next();
+};
+
+middleware.validateFiles = function(req, res, next) {
+	if (!Array.isArray(req.files.files) || !req.files.files.length) {
+		return next(new Error(['[[error:invalid-files]]']));
 	}
 	next();
 };
@@ -190,7 +194,7 @@ middleware.buildHeader = function(req, res, next) {
 				controllers.api.getConfig(req, res, next);
 			},
 			footer: function(next) {
-				app.render('footer', {}, next);
+				app.render('footer', {loggedIn: (req.user ? parseInt(req.user.uid, 10) !== 0 : false)}, next);
 			}
 		}, function(err, results) {
 			if (err) {
@@ -438,7 +442,7 @@ middleware.addExpiresHeaders = function(req, res, next) {
 };
 
 middleware.maintenanceMode = function(req, res, next) {
-	if (meta.config.maintenanceMode !== '1') {
+	if (parseInt(meta.config.maintenanceMode, 10) !== 1) {
 		return next();
 	}
 
@@ -446,7 +450,12 @@ middleware.maintenanceMode = function(req, res, next) {
 			'/login',
 			'/stylesheet.css',
 			'/nodebb.min.js',
-			'/vendor/fontawesome/fonts/fontawesome-webfont.woff'
+			'/vendor/fontawesome/fonts/fontawesome-webfont.woff',
+			'/src/modules/[\\w]+\.js',
+			'/api/get_templates_listing',
+			'/api/login',
+			'/api/?',
+			'/language/.+'
 		],
 		render = function() {
 			res.status(503);
@@ -473,35 +482,35 @@ middleware.maintenanceMode = function(req, res, next) {
 					return true;
 				}
 			}
+			return false;
 		},
 		isApiRoute = /^\/api/;
 
-	if (!isAllowed(req.url)) {
-		if (!req.user) {
-			return render();
-		} else {
-			user.isAdministrator(req.user.uid, function(err, isAdmin) {
-				if (!isAdmin) {
-					return render();
-				} else {
-					return next();
-				}
-			});
-		}
-	} else {
+	if (isAllowed(req.url)) {
 		return next();
 	}
+
+	if (!req.user) {
+		return render();
+	}
+
+	user.isAdministrator(req.user.uid, function(err, isAdmin) {
+		if (err) {
+			return next(err);
+		}
+		if (!isAdmin) {
+			render();
+		} else {
+			next();
+		}
+	});
 };
 
 middleware.publicTagListing = function(req, res, next) {
-	if ((!meta.config.hasOwnProperty('publicTagListing') || parseInt(meta.config.publicTagListing, 10) === 1)) {
+	if (req.user || (!meta.config.hasOwnProperty('publicTagListing') || parseInt(meta.config.publicTagListing, 10) === 1)) {
 		next();
 	} else {
-		if (res.locals.isAPI) {
-			res.sendStatus(401);
-		} else {
-			middleware.ensureLoggedIn(req, res, next);
-		}
+		controllers.helpers.notAllowed(req, res);
 	}
 };
 

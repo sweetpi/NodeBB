@@ -83,7 +83,6 @@ var	async = require('async'),
 	};
 
 	User.getUsersData = function(uids, callback) {
-
 		if (!Array.isArray(uids) || !uids.length) {
 			return callback(null, []);
 		}
@@ -153,23 +152,39 @@ var	async = require('async'),
 			if (err || now - parseInt(score, 10) < 300000) {
 				return callback(err);
 			}
-			db.sortedSetAdd('users:online', now, uid, callback);
+			db.sortedSetAdd('users:online', now, uid, function(err) {
+				if (err) {
+					return callback(err);
+				}
+				plugins.fireHook('action:user.online', {uid: uid, timestamp: now});
+			});
 		});
 	};
 
 	User.setUserField = function(uid, field, value, callback) {
-		plugins.fireHook('action:user.set', {field: field, value: value, type: 'set'});
-		db.setObjectField('user:' + uid, field, value, callback);
+		callback = callback || function() {};
+		db.setObjectField('user:' + uid, field, value, function(err) {
+			if (err) {
+				return callback(err)
+			}
+			plugins.fireHook('action:user.set', {uid: uid, field: field, value: value, type: 'set'});
+			callback();
+		});
 	};
 
 	User.setUserFields = function(uid, data, callback) {
-		for (var field in data) {
-			if (data.hasOwnProperty(field)) {
-				plugins.fireHook('action:user.set', {field: field, value: data[field], type: 'set'});
+		callback = callback || function() {};
+		db.setObject('user:' + uid, data, function(err) {
+			if (err) {
+				return callback(err);
 			}
-		}
-
-		db.setObject('user:' + uid, data, callback);
+			for (var field in data) {
+				if (data.hasOwnProperty(field)) {
+					plugins.fireHook('action:user.set', {uid: uid, field: field, value: data[field], type: 'set'});
+				}
+			}
+			callback();
+		});
 	};
 
 	User.incrementUserFieldBy = function(uid, field, value, callback) {
@@ -178,7 +193,7 @@ var	async = require('async'),
 			if (err) {
 				return callback(err);
 			}
-			plugins.fireHook('action:user.set', {field: field, value: value, type: 'increment'});
+			plugins.fireHook('action:user.set', {uid: uid, field: field, value: value, type: 'increment'});
 
 			callback(null, value);
 		});
@@ -190,7 +205,7 @@ var	async = require('async'),
 			if (err) {
 				return callback(err);
 			}
-			plugins.fireHook('action:user.set', {field: field, value: value, type: 'decrement'});
+			plugins.fireHook('action:user.set', {uid: uid, field: field, value: value, type: 'decrement'});
 
 			callback(null, value);
 		});
@@ -218,34 +233,52 @@ var	async = require('async'),
 	};
 
 	User.getUsers = function(uids, callback) {
-		async.parallel({
-			userData: function(next) {
-				User.getMultipleUserFields(uids, ['uid', 'username', 'userslug', 'picture', 'status', 'banned', 'postcount', 'reputation', 'email:confirmed'], next);
-			},
-			isAdmin: function(next) {
-				User.isAdministrator(uids, next);
-			},
-			isOnline: function(next) {
-				require('./socket.io').isUsersOnline(uids, next);
-			}
-		}, function(err, results) {
+		var fields = ['uid', 'username', 'userslug', 'picture', 'status', 'banned', 'postcount', 'reputation', 'email:confirmed'];
+		plugins.fireHook('filter:users.addFields', {fields: fields}, function(err, data) {
 			if (err) {
 				return callback(err);
 			}
-
-			results.userData.forEach(function(user, index) {
-				if (!user) {
-					return;
-				}
-				user.status = !user.status ? 'online' : user.status;
-				user.status = !results.isOnline[index] ? 'offline' : user.status;
-				user.administrator = results.isAdmin[index];
-				user.banned = parseInt(user.banned, 10) === 1;
-				user['email:confirmed'] = parseInt(user['email:confirmed'], 10) === 1;
+			data.fields = data.fields.filter(function(field, index, array) {
+				return array.indexOf(field) === index;
 			});
+			async.parallel({
+				userData: function(next) {
+					User.getMultipleUserFields(uids, data.fields, next);
+				},
+				isAdmin: function(next) {
+					User.isAdministrator(uids, next);
+				},
+				isOnline: function(next) {
+					require('./socket.io').isUsersOnline(uids, next);
+				}
+			}, function(err, results) {
+				if (err) {
+					return callback(err);
+				}
 
-			callback(err, results.userData);
+				results.userData.forEach(function(user, index) {
+					if (!user) {
+						return;
+					}
+					user.status = User.getStatus(user.status, results.isOnline[index]);
+					user.administrator = results.isAdmin[index];
+					user.banned = parseInt(user.banned, 10) === 1;
+					user['email:confirmed'] = parseInt(user['email:confirmed'], 10) === 1;
+				});
+
+				plugins.fireHook('filter:userlist.get', {users: results.userData}, function(err, data) {
+					if (err) {
+						return callback(err);
+					}
+
+					callback(null, data.users);
+				});
+			});
 		});
+	};
+
+	User.getStatus = function(status, isOnline) {
+		return isOnline ? (status || 'online') : 'offline';
 	};
 
 	User.createGravatarURLFromEmail = function(email) {
@@ -276,7 +309,10 @@ var	async = require('async'),
 	};
 
 	User.addTopicIdToUser = function(uid, tid, timestamp, callback) {
-		db.sortedSetAdd('uid:' + uid + ':topics', timestamp, tid, callback);
+		async.parallel([
+			async.apply(db.sortedSetAdd, 'uid:' + uid + ':topics', timestamp, tid),
+			async.apply(User.incrementUserFieldBy, uid, 'topiccount', 1)
+		], callback);
 	};
 
 	User.exists = function(userslug, callback) {
@@ -397,6 +433,26 @@ var	async = require('async'),
 
 	User.getIgnoredCategories = function(uid, callback) {
 		db.getSortedSetRange('uid:' + uid + ':ignored:cids', 0, -1, callback);
+	};
+
+	User.getWatchedCategories = function(uid, callback) {
+		async.parallel({
+			ignored: function(next) {
+				User.getIgnoredCategories(uid, next);
+			},
+			all: function(next) {
+				db.getSortedSetRange('categories:cid', 0, -1, next);
+			}
+		}, function(err, results) {
+			if (err) {
+				return callback(err);
+			}
+
+			var watched = results.all.filter(function(cid) {
+				return cid && results.ignored.indexOf(cid) === -1;
+			});
+			callback(null, watched);
+		});
 	};
 
 	User.ignoreCategory = function(uid, cid, callback) {

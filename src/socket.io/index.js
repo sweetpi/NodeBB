@@ -40,7 +40,7 @@ Sockets.init = function(server) {
 };
 
 function onConnection(socket) {
-	socket.ip = socket.request.connection.remoteAddress;
+	socket.ip = socket.request.headers['x-forwarded-for'] || socket.request.connection.remoteAddress;
 
 	logger.io_one(socket, socket.uid);
 
@@ -124,11 +124,6 @@ function onMessage(socket, payload) {
 		return winston.warn('[socket.io] Empty method name');
 	}
 
-	if (ratelimit.isFlooding(socket)) {
-		winston.warn('[socket.io] Too many emits! Disconnecting uid : ' + socket.uid + '. Message : ' + eventName);
-		return socket.disconnect();
-	}
-
 	var parts = eventName.toString().split('.'),
 		namespace = parts[0],
 		methodToCall = parts.reduce(function(prev, cur) {
@@ -144,6 +139,17 @@ function onMessage(socket, payload) {
 			winston.warn('[socket.io] Unrecognized message: ' + eventName);
 		}
 		return;
+	}
+
+	socket.previousEvents = socket.previousEvents || [];
+	socket.previousEvents.push(eventName);
+	if (socket.previousEvents.length > 20) {
+		socket.previousEvents.shift();
+	}
+
+	if (!eventName.startsWith('admin.') && ratelimit.isFlooding(socket)) {
+		winston.warn('[socket.io] Too many emits! Disconnecting uid : ' + socket.uid + '. Events : ' + socket.previousEvents);
+		return socket.disconnect();
 	}
 
 	if (Namespaces[namespace].before) {
@@ -214,7 +220,7 @@ function addRedisAdapter(io) {
 }
 
 function callMethod(method, socket, params, callback) {
-	method.call(null, socket, params, function(err, result) {
+	method(socket, params, function(err, result) {
 		callback(err ? {message: err.message} : null, result);
 	});
 }
@@ -308,13 +314,15 @@ Sockets.getUsersInRoom = function (uid, roomName, callback) {
 	});
 };
 
-Sockets.getUidsInRoom = function(roomName) {
+Sockets.getUidsInRoom = function(roomName, callback) {
+	callback = callback || function() {};
 	// TODO : doesnt work in cluster
 
 	var uids = [];
 
 	var socketids = Object.keys(io.sockets.adapter.rooms[roomName] || {});
 	if (!Array.isArray(socketids) || !socketids.length) {
+		callback(null, []);
 		return [];
 	}
 
@@ -328,7 +336,7 @@ Sockets.getUidsInRoom = function(roomName) {
 			});
 		}
 	}
-
+	callback(null, uids);
 	return uids;
 };
 

@@ -44,6 +44,12 @@ questions.main = [
 	}
 ];
 
+questions.optional = [
+	{
+		name: 'port',
+		default: 4567
+	}
+];
 
 function checkSetupFlag(next) {
 	var	setupVal;
@@ -117,6 +123,7 @@ function setupConfig(next) {
 	prompt.start();
 	prompt.message = '';
 	prompt.delimiter = '';
+	prompt.colors = false;
 
 	if (!install.values) {
 		prompt.get(questions.main, function(err, config) {
@@ -148,11 +155,11 @@ function setupConfig(next) {
 		var	config = {},
 			redisQuestions = require('./database/redis').questions,
 			mongoQuestions = require('./database/mongo').questions,
-			question, x, numQ, allQuestions = questions.main.concat(redisQuestions).concat(mongoQuestions);
+			question, x, numQ, allQuestions = questions.main.concat(questions.optional).concat(redisQuestions).concat(mongoQuestions);
 
 		for(x=0,numQ=allQuestions.length;x<numQ;x++) {
 			question = allQuestions[x];
-			config[question.name] = install.values[question.name] || question['default'] || '';
+			config[question.name] = install.values[question.name] || question['default'] || undefined;
 		}
 
 		configureDatabases(null, config, DATABASES, function(err, config) {
@@ -261,11 +268,7 @@ function enableDefaultTheme(next) {
 function createAdministrator(next) {
 	var Groups = require('./groups');
 	Groups.get('administrators', {}, function (err, groupObj) {
-		if (err) {
-			return next(err);
-		}
-
-		if (groupObj && groupObj.memberCount > 0) {
+		if (!err && groupObj && groupObj.memberCount > 0) {
 			winston.info('Administrator found, skipping Admin setup');
 			next();
 		} else {

@@ -13,10 +13,12 @@
     "digest.latest_topics": "Ultimi argomenti su %1",
     "digest.cta": "Clicca qui per visitare %1",
     "digest.unsub.info": "Questo sommario ti è stato inviato perché lo hai sottoscritto nelle tue impostazioni.",
-    "digest.no_topics": "There have been no active topics in the past %1",
+    "digest.no_topics": "Non ci sono state discussioni attive nell'ultimo %1",
     "notif.chat.subject": "Nuovo messaggio in chat da %1",
     "notif.chat.cta": "Clicca qui per continuare la conversazione",
     "notif.chat.unsub.info": "Questa notifica di chat ti è stata inviata perché l'hai scelta nelle impostazioni.",
+    "notif.post.cta": "Click here to read the full topic",
+    "notif.post.unsub.info": "This post notification was sent to you due to your subscription settings.",
     "test.text1": "Questa è una email di test per verificare che il servizio di invio email è configurato correttamente sul tuo NodeBB.",
     "unsub.cta": "Clicca qui per modificare queste impostazioni",
     "closing": "Grazie!"

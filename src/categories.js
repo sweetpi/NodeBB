@@ -40,10 +40,11 @@ var async = require('async'),
 				topics: function(next) {
 					Categories.getCategoryTopics({
 						cid: data.cid,
+						set: data.set,
+						reverse: data.reverse,
 						start: data.start,
 						stop: data.end,
-						uid: data.uid,
-						targetUid: data.targetUid
+						uid: data.uid
 					}, next);
 				},
 				pageCount: function(next) {
@@ -63,9 +64,7 @@ var async = require('async'),
 				category.isIgnored = results.isIgnored[0];
 				category.topic_row_size = 'col-md-9';
 
-				plugins.fireHook('filter:category.get', {category: category, uid: data.uid}, function(err, data) {
-					callback(err, data ? data.category : null);
-				});
+				callback(null, category);
 			});
 		});
 	};
@@ -131,7 +130,7 @@ var async = require('async'),
 	};
 
 	Categories.getModerators = function(cid, callback) {
-		Groups.getMembers('cid:' + cid + ':privileges:mods', function(err, uids) {
+		Groups.getMembers('cid:' + cid + ':privileges:mods', 0, -1, function(err, uids) {
 			if (err || !Array.isArray(uids) || !uids.length) {
 				return callback(err, []);
 			}

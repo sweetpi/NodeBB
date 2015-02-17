@@ -1,12 +1,17 @@
+"use strict";
+/* globals socket, ajaxify, translator, app, define */
+
 define('search', ['navigator'], function(nav) {
-	"use strict";
-	/* globals socket, ajaxify */
 
 	var Search = {
 			current: {}
 		};
 
-	Search.query = function(term, callback) {
+	Search.query = function(data, callback) {
+		var term = data.term;
+		var searchIn = data.in || 'posts';
+		var postedBy = data.by || '';
+
 		// Detect if a tid was specified
 		var topicSearch = term.match(/in:topic-([\d]+)/);
 
@@ -18,8 +23,29 @@ define('search', ['navigator'], function(nav) {
 			} catch(e) {
 				return app.alertError('[[error:invalid-search-term]]');
 			}
+			var query = {in: searchIn};
+			if (postedBy && searchIn === 'posts') {
+				query.by = postedBy;
+			}
 
-			ajaxify.go('search/' + term);
+			if (data.categories && data.categories.length) {
+				query.categories = data.categories;
+				if (data.searchChildren) {
+					query.searchChildren = data.searchChildren;
+				}
+			}
+
+			if (parseInt(data.replies, 10) > 0) {
+				query.replies = data.replies;
+				query.repliesFilter = data.repliesFilter || 'atleast';
+			}
+
+			if (data.timeRange) {
+				query.timeRange = data.timeRange;
+				query.timeFilter = data.timeFilter || 'newer';
+			}
+
+			ajaxify.go('search/' + term + '?' + decodeURIComponent($.param(query)));
 			callback();
 		} else {
 			var cleanedTerm = term.replace(topicSearch[0], ''),
@@ -105,7 +131,7 @@ define('search', ['navigator'], function(nav) {
 				Mousetrap.bind('esc', Search.topicDOM.end);
 			});
 		}
-	}
+	};
 
 	Search.topicDOM.end = function() {
 		$('.topic-search').addClass('hidden').find('.prev, .next').attr('disabled', 'disabled');

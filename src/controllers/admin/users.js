@@ -9,7 +9,7 @@ var usersController = {};
 usersController.search = function(req, res, next) {
 	res.render('admin/manage/users', {
 		search_display: '',
-		loadmore_display: 'none',
+		loadmore_display: 'hide',
 		users: []
 	});
 };
@@ -35,6 +35,11 @@ function getUsers(set, req, res, next) {
 		if (err) {
 			return next(err);
 		}
+
+		users = users.filter(function(user) {
+			return user && parseInt(user.uid, 10);
+		});
+
 		res.render('admin/manage/users', {
 			search_display: 'hidden',
 			loadmore_display: 'block',
@@ -47,6 +52,9 @@ function getUsers(set, req, res, next) {
 
 usersController.getCSV = function(req, res, next) {
 	user.getUsersCSV(function(err, data) {
+		if (err) {
+			return next(err);
+		}
 		res.attachment('users.csv');
 		res.setHeader('Content-Type', 'text/csv');
 		res.end(data);

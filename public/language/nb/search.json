@@ -1,4 +1,7 @@
 {
     "results_matching": "%1 resultat(er) samsvarer med \"%2\", (%3 sekunder)",
-    "no-matches": "Ingen innlegg funnet"
+    "no-matches": "Ingen matcher funnet",
+    "in": "I",
+    "by": "Av",
+    "posted-by": "Skapt av"
 }

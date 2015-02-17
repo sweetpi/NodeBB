@@ -1,4 +1,7 @@
 {
     "results_matching": "%1 Ergebniss(e) stimmen mit \"%2\" überein, (%3 Sekunden)",
-    "no-matches": "Keine Beiträge gefunden"
+    "no-matches": "Keine Ergebnisse gefunden",
+    "in": "In",
+    "by": "Bei",
+    "posted-by": "Geschrieben von"
 }

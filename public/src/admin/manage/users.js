@@ -28,7 +28,7 @@ define('admin/manage/users', ['admin/modules/selectable'], function(selectable) 
 		}
 
 		function removeSelected() {
-			$('#users-container .users-box .selected').remove();
+			$('#users-container .users-box .selected').parents('.users-box').remove();
 		}
 
 		function done(successMessage, className, flag) {
@@ -237,7 +237,7 @@ define('admin/manage/users', ['admin/modules/selectable'], function(selectable) 
 			timeoutId = setTimeout(function() {
 				$('.fa-spinner').removeClass('hidden');
 
-				socket.emit('admin.user.search', {type: type, query: $this.val()}, function(err, data) {
+				socket.emit('admin.user.search', {searchBy: [type], query: $this.val()}, function(err, data) {
 					if (err) {
 						return app.alertError(err.message);
 					}
@@ -267,14 +267,21 @@ define('admin/manage/users', ['admin/modules/selectable'], function(selectable) 
 
 		handleUserCreate();
 
-		function onUsersLoaded(users) {
-			templates.parse('admin/manage/users', 'users', {users: users, requireEmailConfirmation: config.requireEmailConfirmation}, function(html) {
-				$('#users-container').append($(html));
-				selectable.enable('#users-container', '.user-selectable');
-			});
-		}
+		$('#load-more-users-btn').on('click', loadMoreUsers);
+
+		$(window).off('scroll').on('scroll', function() {
+			var bottom = ($(document).height() - $(window).height()) * 0.9;
+
+			if ($(window).scrollTop() > bottom && !loadingMoreUsers) {
+				loadMoreUsers();
+			}
+		});
+
 
 		function loadMoreUsers() {
+			if (active === 'search') {
+				return;
+			}
 			var set = 'users:joindate';
 			if (active === 'sort-posts') {
 				set = 'users:postcount';
@@ -283,7 +290,6 @@ define('admin/manage/users', ['admin/modules/selectable'], function(selectable) 
 			} else if (active === 'banned') {
 				set = 'users:banned';
 			}
-
 
 			loadingMoreUsers = true;
 			socket.emit('user.loadMore', {
@@ -297,15 +303,12 @@ define('admin/manage/users', ['admin/modules/selectable'], function(selectable) 
 			});
 		}
 
-		$('#load-more-users-btn').on('click', loadMoreUsers);
-
-		$(window).off('scroll').on('scroll', function() {
-			var bottom = ($(document).height() - $(window).height()) * 0.9;
-
-			if ($(window).scrollTop() > bottom && !loadingMoreUsers) {
-				loadMoreUsers();
-			}
-		});
+		function onUsersLoaded(users) {
+			templates.parse('admin/manage/users', 'users', {users: users, requireEmailConfirmation: config.requireEmailConfirmation}, function(html) {
+				$('#users-container').append($(html));
+				selectable.enable('#users-container', '.user-selectable');
+			});
+		}
 
 
 	};
