@@ -2,6 +2,7 @@
 
 var	async = require('async'),
 	nconf = require('nconf'),
+	db = require('../database'),
 	user = require('../user'),
 	groups = require('../groups'),
 	topics = require('../topics'),
@@ -13,6 +14,7 @@ var	async = require('async'),
 	websockets = require('./index'),
 	meta = require('../meta'),
 	events = require('../events'),
+	emailer = require('../emailer'),
 	SocketUser = {};
 
 SocketUser.exists = function(socket, data, callback) {
