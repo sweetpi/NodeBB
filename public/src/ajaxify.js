@@ -31,6 +31,17 @@ $(document).ready(function() {
 	ajaxify.currentPage = null;
 
 	ajaxify.go = function (url, callback, quiet) {
+		if (!socket.connected) {
+			if (ajaxify.reconnectAction) {
+				$(window).off('action:reconnected', ajaxify.reconnectAction);
+			}
+			ajaxify.reconnectAction = function(e) {
+				ajaxify.go(url, callback, quiet);
+				$(window).off(e);
+			};
+			$(window).on('action:reconnected', ajaxify.reconnectAction);
+		}
+
 		if (ajaxify.handleRedirects(url)) {
 			return true;
 		}
@@ -61,12 +72,6 @@ $(document).ready(function() {
 			});
 		});
 
-		require(['search'], function(search) {
-			if (search.topicDOM.active && !url.startsWith('topic/')) {
-				search.topicDOM.end();
-			}
-		});
-
 		return true;
 	};
 
@@ -75,17 +80,15 @@ $(document).ready(function() {
 		var isAdminRoute = url.startsWith('admin') && window.location.pathname.indexOf(RELATIVE_PATH + '/admin') !== 0;
 		var uploadsOrApi = url.startsWith('uploads') || url.startsWith('api');
 		if (isAdminRoute || uploadsOrApi) {
-			window.open(RELATIVE_PATH + '/' + url, '_blank');
+			window.open(RELATIVE_PATH + '/' + url, '_top');
 			return true;
 		}
 		return false;
 	};
 
 
-	ajaxify.start = function(url, quiet, search) {
+	ajaxify.start = function(url, quiet) {
 		url = ajaxify.removeRelativePath(url.replace(/^\/|\/$/g, ''));
-		var hash = window.location.hash;
-		search = search || '';
 
 		$(window).trigger('action:ajaxify.start', {url: url});
 
@@ -97,8 +100,8 @@ $(document).ready(function() {
 
 		if (window.history && window.history.pushState) {
 			window.history[!quiet ? 'pushState' : 'replaceState']({
-				url: url + search + hash
-			}, url, RELATIVE_PATH + '/' + url + search + hash);
+				url: url
+			}, url, RELATIVE_PATH + '/' + url);
 		}
 		return url;
 	};
@@ -109,8 +112,11 @@ $(document).ready(function() {
 
 		if (data) {
 			var status = parseInt(data.status, 10);
+			if (status === 403 || status === 404 || status === 500 || status === 502) {
+				if (status === 502) {
+					status = 500;
+				}
 
-			if (status === 403 || status === 404 || status === 500) {
 				$('#footer, #content').removeClass('hide').addClass('ajaxifying');
 				return renderTemplate(url, status.toString(), data.responseJSON, (new Date()).getTime(), callback);
 			} else if (status === 401) {
@@ -150,13 +156,18 @@ $(document).ready(function() {
 	}
 
 	ajaxify.end = function(url, tpl_url) {
+		function done() {
+			if (--count === 0) {
+				$(window).trigger('action:ajaxify.end', {url: url});
+			}
+		}
+		var count = 2;
+
 		ajaxify.variables.parse();
 
-		ajaxify.loadScript(tpl_url);
+		ajaxify.loadScript(tpl_url, done);
 
-		ajaxify.widgets.render(tpl_url, url, function() {
-			$(window).trigger('action:ajaxify.end', {url: url});
-		});
+		ajaxify.widgets.render(tpl_url, url, done);
 
 		$(window).trigger('action:ajaxify.contentLoaded', {url: url, tpl: tpl_url});
 
@@ -175,7 +186,7 @@ $(document).ready(function() {
 			e.preventDefault();
 		}
 
-		ajaxify.go(ajaxify.currentPage);
+		ajaxify.go(ajaxify.currentPage, null, true);
 	};
 
 	ajaxify.loadScript = function(tpl_url, callback) {
@@ -204,7 +215,7 @@ $(document).ready(function() {
 				if (!data) {
 					return;
 				}
-
+				ajaxify.data = data;
 				data.relative_path = RELATIVE_PATH;
 				$(window).trigger('action:ajaxify.dataLoaded', {url: url, data: data});
 
@@ -242,21 +253,15 @@ $(document).ready(function() {
 	};
 
 	function ajaxifyAnchors() {
-		templates.registerLoader(ajaxify.loadTemplate);
-
-		if (!window.history || !window.history.pushState) {
-			return; // no ajaxification for old browsers
-		}
-
 		function hrefEmpty(href) {
-			return href === undefined || href === '' || href === 'javascript:;' || href === window.location.href + "#" || href.slice(0, 1) === "#";
+			return href === undefined || href === '' || href === 'javascript:;';
 		}
 
 		// Enhancing all anchors to ajaxify...
 		$(document.body).on('click', 'a', function (e) {
-			if (this.target !== '') {
+			if (this.target !== '' || (this.protocol !== 'http:' && this.protocol !== 'https:')) {
 				return;
-			} else if (hrefEmpty(this.href) || this.protocol === 'javascript:' || $(this).attr('data-ajaxify') === 'false') {
+			} else if (hrefEmpty(this.href) || this.protocol === 'javascript:' || $(this).attr('data-ajaxify') === 'false' || $(this).attr('href') === '#') {
 				return e.preventDefault();
 			}
 
@@ -267,16 +272,13 @@ $(document).ready(function() {
 					(RELATIVE_PATH.length > 0 ? this.pathname.indexOf(RELATIVE_PATH) === 0 : true))	// Subfolder installs need this additional check
 				) {
 					// Internal link
-					var url = this.href.replace(rootUrl + '/', '');
+					var pathname = this.href.replace(rootUrl + RELATIVE_PATH + '/', '');
 
-					if(window.location.pathname === this.pathname && this.hash) {
-						if (this.hash !== window.location.hash) {
-							window.location.hash = this.hash;
-						}
-
-						e.preventDefault();
+					// Special handling for urls with hashes
+					if (window.location.pathname === this.pathname && this.hash.length) {
+						window.location.hash = this.hash;
 					} else {
-						if (ajaxify.go(url)) {
+						if (ajaxify.go(pathname)) {
 							e.preventDefault();
 						}
 					}
@@ -294,7 +296,13 @@ $(document).ready(function() {
 		});
 	}
 
-	ajaxifyAnchors();
+	templates.registerLoader(ajaxify.loadTemplate);
+
+	if (window.history && window.history.pushState) {
+		// Progressive Enhancement, ajaxify available only to modern browsers
+		ajaxifyAnchors();
+	}
+
 	app.load();
 	templates.cache['500'] = $('.tpl-500').html();
 

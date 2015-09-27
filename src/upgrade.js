@@ -21,7 +21,7 @@ var db = require('./database'),
 	schemaDate, thisSchemaDate,
 
 	// IMPORTANT: REMEMBER TO UPDATE VALUE OF latestSchema
-	latestSchema = Date.UTC(2015, 4, 20);
+	latestSchema = Date.UTC(2015, 6, 3);
 
 Upgrade.check = function(callback) {
 	db.get('schemaDate', function(err, value) {
@@ -34,12 +34,13 @@ Upgrade.check = function(callback) {
 				if (err) {
 					return callback(err);
 				}
-				callback(null, true);
+				callback(null);
 			});
 			return;
 		}
 
-		callback(null, parseInt(value, 10) >= latestSchema);
+		var schema_ok = parseInt(value, 10) >= latestSchema;
+		callback(!schema_ok ? new Error('schema-out-of-date') : null);
 	});
 };
 
@@ -272,7 +273,7 @@ Upgrade.upgrade = function(callback) {
 					async.eachLimit(users, 100, function(user, next) {
 						var newEmail = user.value.replace(/\uff0E/g, '.');
 						if (newEmail === user.value) {
-							return next();
+							return process.nextTick(next);
 						}
 						async.series([
 							async.apply(db.sortedSetRemove, 'email:uid', user.value),
@@ -340,13 +341,13 @@ Upgrade.upgrade = function(callback) {
 					if (err) {
 						return callback(err);
 					}
-					var index = 0;
+
+					userData = userData.filter(function(user) {
+						return user && user.value;
+					});
+
 					async.eachLimit(userData, 500, function(userData, next) {
-						if (userData && userData.value) {
-							db.sortedSetAdd(set + ':sorted', 0, userData.value.toLowerCase() + ':' + userData.score, next);
-						} else {
-							next();
-						}
+						db.sortedSetAdd(set + ':sorted', 0, userData.value.toLowerCase() + ':' + userData.score, next);
 					}, function(err) {
 						callback(err);
 					});
@@ -377,7 +378,76 @@ Upgrade.upgrade = function(callback) {
 				winston.info('[2015/05/20] Adding username:sorted and email:sorted skipped');
 				next();
 			}
+		},
+		function(next) {
+			thisSchemaDate = Date.UTC(2015, 5, 2);
+			if (schemaDate < thisSchemaDate) {
+				updatesMade = true;
+				winston.info('[2015/06/02] Creating group sorted sets');
+
+				db.getSortedSetRange('groups:createtime', 0, -1, function(err, groupNames) {
+					if (err) {
+						return callback(err);
+					}
+
+					groupNames = groupNames.filter(Boolean);
+
+					async.eachLimit(groupNames, 500, function(groupName, next) {
+						db.getObjectFields('group:' + groupName, ['hidden', 'system', 'createtime', 'memberCount'], function(err, groupData) {
+							if (err) {
+								return next(err);
+							}
+
+							if (parseInt(groupData.hidden, 10) === 1 || parseInt(groupData.system, 10) === 1) {
+								return next();
+							}
+							async.parallel([
+								async.apply(db.sortedSetAdd, 'groups:visible:createtime', groupData.createtime, groupName),
+								async.apply(db.sortedSetAdd, 'groups:visible:memberCount', groupData.memberCount || 0, groupName),
+								async.apply(db.sortedSetAdd, 'groups:visible:name', 0, groupName.toLowerCase() + ':' + groupName)
+							], next);
+						});
+					}, function(err) {
+						if (err) {
+							return next(err);
+						}
+
+						winston.info('[2015/06/02] Creating group sorted sets done');
+						Upgrade.update(thisSchemaDate, next);
+					});
+				});
+			} else {
+				winston.info('[2015/06/02] Creating group sorted sets skipped');
+				next();
+			}
+		},
+		function(next) {
+			thisSchemaDate = Date.UTC(2015, 6, 3);
+			if (schemaDate < thisSchemaDate) {
+				updatesMade = true;
+				winston.info('[2015/07/03] Enabling default composer plugin');
+
+				db.isSortedSetMember('plugins:active', 'nodebb-plugin-composer-default', function(err, active) {
+					if (!active) {
+						Plugins.toggleActive('nodebb-plugin-composer-default', function(err) {
+							if (err) {
+								return next(err);
+							}
+
+							winston.info('[2015/07/03] Enabling default composer plugin done');
+							Upgrade.update(thisSchemaDate, next);
+						});
+					} else {
+						winston.info('[2015/07/03] Enabling default composer plugin done');
+						Upgrade.update(thisSchemaDate, next);
+					}
+				});
+			} else {
+				winston.info('[2015/07/03] Enabling default composer plugin skipped');
+				next();
+			}
 		}
+
 
 		// Add new schema updates here
 		// IMPORTANT: REMEMBER TO UPDATE VALUE OF latestSchema IN LINE 24!!!

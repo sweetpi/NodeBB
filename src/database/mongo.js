@@ -7,8 +7,11 @@
 		async = require('async'),
 		nconf = require('nconf'),
 		session = require('express-session'),
+		_ = require('underscore'),
 		semver = require('semver'),
 		db, mongoClient;
+
+	_.mixin(require('underscore.deep'));
 
 	module.questions = [
 		{
@@ -60,7 +63,7 @@
 
 		var usernamePassword = '';
 		if (nconf.get('mongo:username') && nconf.get('mongo:password')) {
-			usernamePassword = nconf.get('mongo:username') + ':' + nconf.get('mongo:password') + '@';
+			usernamePassword = nconf.get('mongo:username') + ':' + encodeURIComponent(nconf.get('mongo:password')) + '@';
 		}
 
 		// Sensible defaults for Mongo, if not set
@@ -89,6 +92,9 @@
 				poolSize: parseInt(nconf.get('mongo:poolSize'), 10) || 10
 			}
 		};
+
+		connOptions = _.deepExtend((nconf.get('mongo:options') || {}), connOptions);
+
 		mongoClient.connect(connString, connOptions, function(err, _db) {
 			if (err) {
 				winston.error("NodeBB could not connect to your Mongo database. Mongo returned the following error: " + err.message);
@@ -161,7 +167,6 @@
 	};
 
 	module.checkCompatibility = function(callback) {
-		// For MongoDB, we need to ensure that the mongodb package is >= 2.0.0
 		var mongoPkg = require.main.require('./node_modules/mongodb/package.json'),
 			err = semver.lt(mongoPkg.version, '2.0.0') ? new Error('The `mongodb` package is out-of-date, please run `./nodebb setup` again.') : null;
 
@@ -172,16 +177,25 @@
 	};
 
 	module.info = function(db, callback) {
-		db.stats({scale:1024}, function(err, stats) {
-			if(err) {
+		async.parallel({
+			serverStats: function(next) {
+				db.command({'serverStatus': 1}, next);
+			},
+			stats: function(next) {
+				db.stats({scale:1024}, next);
+			}
+		}, function(err, results) {
+			if (err) {
 				return callback(err);
 			}
+			var stats = results.stats;
 
 			stats.avgObjSize = (stats.avgObjSize / 1024).toFixed(2);
 			stats.dataSize = (stats.dataSize / 1024).toFixed(2);
 			stats.storageSize = (stats.storageSize / 1024).toFixed(2);
 			stats.fileSize = (stats.fileSize / 1024).toFixed(2);
 			stats.indexSize = (stats.indexSize / 1024).toFixed(2);
+			stats.mem = results.serverStats.mem;
 			stats.raw = JSON.stringify(stats, null, 4);
 			stats.mongo = true;
 

@@ -164,6 +164,9 @@ var db = require('./database'),
 						if (index > 0 && parseInt(message.timestamp, 10) > parseInt(messages[index-1].timestamp, 10) + (1000*60*5)) {
 							// If it's been 5 minutes, this is a new set of messages
 							message.newSet = true;
+						} else if (index > 0 && message.fromuid !== messages[index-1].fromuid) {
+							// If the previous message was from the other person, this is also a new set
+							message.newSet = true
 						}
 
 						return message;
@@ -390,7 +393,8 @@ var db = require('./database'),
 			bodyShort: '[[notifications:new_message_from, ' + messageObj.fromUser.username + ']]',
 			bodyLong: messageObj.content,
 			nid: 'chat_' + fromuid + '_' + touid,
-			from: fromuid
+			from: fromuid,
+			path: '/chats/' + messageObj.fromUser.username
 		}, function(err, notification) {
 			if (!err && notification) {
 				notifications.push(notification, [touid], callback);
@@ -402,6 +406,7 @@ var db = require('./database'),
 				emailer.send('notif_chat', touid, {
 					subject: '[[email:notif.chat.subject, ' + messageObj.fromUser.username + ']]',
 					username: messageObj.toUser.username,
+					userslug: utils.slugify(messageObj.toUser.username),
 					summary: '[[notifications:new_message_from, ' + messageObj.fromUser.username + ']]',
 					message: messageObj,
 					site_title: meta.config.title || 'NodeBB',

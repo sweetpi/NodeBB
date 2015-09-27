@@ -1,12 +1,18 @@
 "use strict";
 
-var meta = require('./../meta'),
-	user = require('./../user'),
-	plugins = require('./../plugins'),
-	widgets = require('../widgets'),
-
+var async = require('async'),
 	validator = require('validator'),
-	nconf = require('nconf');
+	nconf = require('nconf'),
+
+	meta = require('../meta'),
+	user = require('../user'),
+	posts = require('../posts'),
+	topics = require('../topics'),
+	categories = require('../categories'),
+	privileges = require('../privileges'),
+	plugins = require('../plugins'),
+	helpers = require('./helpers'),
+	widgets = require('../widgets');
 
 var apiController = {};
 
@@ -42,6 +48,7 @@ apiController.getConfig = function(req, res, next) {
 	config.maximumAboutMeLength = meta.config.maximumAboutMeLength || 1000;
 	config.useOutgoingLinksPage = parseInt(meta.config.useOutgoingLinksPage, 10) === 1;
 	config.allowGuestSearching = parseInt(meta.config.allowGuestSearching, 10) === 1;
+	config.allowGuestUserSearching = parseInt(meta.config.allowGuestUserSearching, 10) === 1;
 	config.allowGuestHandles = parseInt(meta.config.allowGuestHandles, 10) === 1;
 	config.allowFileUploads = parseInt(meta.config.allowFileUploads, 10) === 1;
 	config.allowProfileImageUploads = parseInt(meta.config.allowProfileImageUploads) === 1;
@@ -54,15 +61,17 @@ apiController.getConfig = function(req, res, next) {
 	config.disableChat = parseInt(meta.config.disableChat, 10) === 1;
 	config.maxReconnectionAttempts = meta.config.maxReconnectionAttempts || 5;
 	config.reconnectionDelay = meta.config.reconnectionDelay || 1500;
-	config.tagsPerTopic = meta.config.tagsPerTopic || 5;
+	config.minimumTagsPerTopic = meta.config.minimumTagsPerTopic || 0;
+	config.maximumTagsPerTopic = meta.config.maximumTagsPerTopic || 5;
 	config.minimumTagLength = meta.config.minimumTagLength || 3;
 	config.maximumTagLength = meta.config.maximumTagLength || 15;
 	config.topicsPerPage = meta.config.topicsPerPage || 20;
 	config.postsPerPage = meta.config.postsPerPage || 20;
 	config.maximumFileSize = meta.config.maximumFileSize;
 	config['theme:id'] = meta.config['theme:id'];
+	config['theme:src'] = meta.config['theme:src'];
 	config.defaultLang = meta.config.defaultLang || 'en_GB';
-	config.userLang = config.defaultLang;
+	config.userLang = req.query.lang || config.defaultLang;
 	config.environment = process.env.NODE_ENV;
 	config.loggedIn = !!req.user;
 	config['cache-buster'] = meta.config['cache-buster'] || '';
@@ -87,7 +96,7 @@ apiController.getConfig = function(req, res, next) {
 		config.topicsPerPage = settings.topicsPerPage;
 		config.postsPerPage = settings.postsPerPage;
 		config.notificationSounds = settings.notificationSounds;
-		config.userLang = settings.userLang || config.defaultLang;
+		config.userLang = req.query.lang || settings.userLang || config.defaultLang;
 		config.openOutgoingLinksInNewTab = settings.openOutgoingLinksInNewTab;
 		config.topicPostSort = settings.topicPostSort || config.topicPostSort;
 		config.categoryTopicSort = settings.categoryTopicSort || config.categoryTopicSort;
@@ -122,5 +131,38 @@ apiController.renderWidgets = function(req, res, next) {
 		res.status(200).json(widgets);
 	});
 };
+
+apiController.getObject = function(req, res, next) {
+	var methods = {
+		post: {
+			canRead: privileges.posts.can,
+			data: posts.getPostData
+		},
+		topic: {
+			canRead: privileges.topics.can,
+			data: topics.getTopicData
+		},
+		category: {
+			canRead: privileges.categories.can,
+			data: categories.getCategoryData
+		}
+	};
+	if (!methods[req.params.type]) {
+		return next();
+	}
+	async.parallel({
+		canRead: async.apply(methods[req.params.type].canRead, 'read', req.params.id, req.uid),
+		data: async.apply(methods[req.params.type].data, req.params.id)
+	}, function (err, results) {
+		if (err || !results.data) {
+			return next(err);
+		}
+		if (!results.canRead) {
+			return helpers.notAllowed(req, res);
+		}
+		res.json(results.data);
+	});
+};
+
 
 module.exports = apiController;

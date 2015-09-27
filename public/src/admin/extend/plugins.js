@@ -27,7 +27,9 @@ define('admin/extend/plugins', function() {
 					type: status.active ? 'warning' : 'success',
 					timeout: 5000,
 					clickfn: function() {
-						socket.emit('admin.reload');
+						require(['admin/modules/instance'], function(instance) {
+							instance.reload();
+						});
 					}
 				});
 			});
@@ -160,7 +162,9 @@ define('admin/extend/plugins', function() {
 					type: 'warning',
 					timeout: 5000,
 					clickfn: function() {
-						socket.emit('admin.reload');
+						require(['admin/modules/instance'], function(instance) {
+							instance.reload();
+						});
 					}
 				});
 			}
@@ -177,28 +181,17 @@ define('admin/extend/plugins', function() {
 		socket.emit('admin.plugins.toggleInstall', {
 			id: pluginID,
 			version: version
-		}, function(err, status) {
+		}, function(err, pluginData) {
 			if (err) {
 				return app.alertError(err.message);
 			}
 
-			if (status.installed) {
-				btn.html('<i class="fa fa-trash-o"></i> Uninstall');
-			} else {
-				btn.html('<i class="fa fa-download"></i> Install');
-			}
-
-			activateBtn.toggleClass('hidden', !status.installed);
-
-			btn.toggleClass('btn-danger', status.installed)
-				.toggleClass('btn-success', !status.installed)
-				.attr('disabled', false)
-				.attr('data-installed', status.installed ? 1 : 0);
+			ajaxify.refresh();
 
 			app.alert({
 				alert_id: 'plugin_toggled',
-				title: 'Plugin ' + (status.installed ? 'Installed' : 'Uninstalled'),
-				message: status.installed ? 'Plugin successfully installed, please activate the plugin.' : 'The plugin has been successfully deactivated and uninstalled.',
+				title: 'Plugin ' + (pluginData.installed ? 'Installed' : 'Uninstalled'),
+				message: pluginData.installed ? 'Plugin successfully installed, please activate the plugin.' : 'The plugin has been successfully deactivated and uninstalled.',
 				type: 'info',
 				timeout: 5000
 			});
