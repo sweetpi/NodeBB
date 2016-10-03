@@ -2,6 +2,7 @@
 
 var async = require('async');
 var winston = require('winston');
+var validator = require('validator');
 
 var posts = require('../../posts');
 var groups = require('../../groups');
@@ -30,16 +31,9 @@ module.exports = function(SocketPosts) {
 			return callback(new Error('[[error:content-too-long, ' + meta.config.maximumPostLength + ']]'));
 		}
 
-		posts.edit({
-			uid: socket.uid,
-			handle: data.handle,
-			pid: data.pid,
-			title: data.title,
-			content: data.content,
-			topic_thumb: data.topic_thumb,
-			tags: data.tags,
-			req: websockets.reqFromSocket(socket)
-		}, function(err, result) {
+		data.uid = socket.uid;
+		data.req = websockets.reqFromSocket(socket);
+		posts.edit(data, function(err, result) {
 			if (err) {
 				return callback(err);
 			}
@@ -49,8 +43,8 @@ module.exports = function(SocketPosts) {
 					type: 'topic-rename',
 					uid: socket.uid,
 					ip: socket.ip,
-					oldTitle: result.topic.oldTitle,
-					newTitle: result.topic.title
+					oldTitle: validator.escape(String(result.topic.oldTitle)),
+					newTitle: validator.escape(String(result.topic.title))
 				});
 			}
 

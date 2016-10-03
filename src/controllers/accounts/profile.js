@@ -54,7 +54,7 @@ profileController.get = function(req, res, callback) {
 				},
 				aboutme: function(next) {
 					if (userData.aboutme) {
-						plugins.fireHook('filter:parse.raw', userData.aboutme, next);
+						plugins.fireHook('filter:parse.aboutme', userData.aboutme, next);
 					} else {
 						next();
 					}
@@ -118,6 +118,9 @@ profileController.get = function(req, res, callback) {
 					}
 				);
 			}
+			userData.selectedGroup = userData.groups.find(function(group) {
+				return group && group.name === userData.groupTitle;
+			});
 
 			plugins.fireHook('filter:user.account', {userData: userData, uid: req.uid}, next);
 		}

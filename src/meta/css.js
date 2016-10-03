@@ -5,7 +5,6 @@ var winston = require('winston'),
 	fs = require('fs'),
 	path = require('path'),
 	less = require('less'),
-	crypto = require('crypto'),
 	async = require('async'),
 	autoprefixer = require('autoprefixer'),
 	postcss = require('postcss'),
@@ -40,11 +39,9 @@ module.exports = function(Meta) {
 				paths = [
 					baseThemePath,
 					path.join(__dirname, '../../node_modules'),
-					path.join(__dirname, '../../public/vendor/fontawesome/less'),
-					path.join(__dirname, '../../public/vendor/bootstrap/less')
+					path.join(__dirname, '../../public/vendor/fontawesome/less')
 				],
-				source = '@import "font-awesome";',
-				acpSource = '@import "font-awesome";';
+				source = '@import "font-awesome";';
 
 			plugins.lessFiles = filterMissingFiles(plugins.lessFiles);
 			plugins.cssFiles = filterMissingFiles(plugins.cssFiles);
@@ -66,7 +63,9 @@ module.exports = function(Meta) {
 					return callback(err);
 				}
 
-				source += '\n@import (inline) "..' + path.sep + '..' + path.sep + 'public/vendor/jquery/css/smoothness/jquery-ui-1.10.4.custom.min.css";';
+				var acpSource = source;
+
+				source += '\n@import (inline) "..' + path.sep + '..' + path.sep + 'public/vendor/jquery/css/smoothness/jquery-ui.css";';
 				source += '\n@import (inline) "..' + path.sep + '..' + path.sep + 'public/vendor/jquery/bootstrap-tagsinput/bootstrap-tagsinput.css";';
 				source += '\n@import (inline) "..' + path.sep + 'public/vendor/colorpicker/colorpicker.css";';
 				source += '\n@import "..' + path.sep + '..' + path.sep + 'public/less/flags.less";';
@@ -77,8 +76,9 @@ module.exports = function(Meta) {
 				source = '@import "./theme";\n' + source;
 
 				acpSource += '\n@import "..' + path.sep + 'public/less/admin/admin";\n';
-				acpSource += '\n@import "..' + path.sep + 'public/less/generics.less";';
-				acpSource += '\n@import (inline) "..' + path.sep + 'public/vendor/colorpicker/colorpicker.css";';
+				acpSource += '\n@import "..' + path.sep + 'public/less/generics.less";\n';
+				acpSource += '\n@import (inline) "..' + path.sep + 'public/vendor/colorpicker/colorpicker.css";\n';
+				acpSource += '\n@import (inline) "..' + path.sep + 'public/vendor/jquery/css/smoothness/jquery-ui.css";';
 
 
 				var fromFile = nconf.get('from-file') || '';
@@ -170,6 +170,10 @@ module.exports = function(Meta) {
 		winston.verbose('[meta/css] Reading stylesheet ' + filePath.split('/').pop() + ' from file');
 
 		fs.readFile(filePath, function(err, file) {
+			if (err) {
+				return callback(err);
+			}
+
 			Meta.css[filename] = file;
 			callback();
 		});
@@ -196,7 +200,7 @@ module.exports = function(Meta) {
 				Meta.css[destination] = result.css;
 
 				// Save the compiled CSS in public/ so things like nginx can serve it
-				if (nconf.get('isPrimary') === 'true') {
+				if (nconf.get('isPrimary') === 'true' && (nconf.get('local-assets') === undefined || nconf.get('local-assets') !== false)) {
 					return Meta.css.commitToFile(destination, function() {
 						if (typeof callback === 'function') {
 							callback(null, result.css);

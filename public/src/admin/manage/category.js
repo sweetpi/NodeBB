@@ -5,9 +5,8 @@ define('admin/manage/category', [
 	'uploader',
 	'iconSelect',
 	'admin/modules/colorpicker',
-	'autocomplete',
-	'Chart'
-], function(uploader, iconSelect, colorpicker, autocomplete, Chart) {
+	'autocomplete'
+], function(uploader, iconSelect, colorpicker, autocomplete) {
 	var	Category = {};
 
 	Category.init = function() {
@@ -19,6 +18,9 @@ define('admin/manage/category', [
 			if (cid) {
 				modified_categories[cid] = modified_categories[cid] || {};
 				modified_categories[cid][$(el).attr('data-name')] = $(el).val();
+
+				app.flags = app.flags || {};
+				app.flags._unsaved = true;
 			}
 		}
 
@@ -32,6 +34,7 @@ define('admin/manage/category', [
 					}
 
 					if (result && result.length) {
+						app.flags._unsaved = false;
 						app.alert({
 							title: 'Updated Categories',
 							message: 'Category IDs ' + result.join(', ') + ' was successfully updated.',
@@ -100,46 +103,17 @@ define('admin/manage/category', [
 			});
 		});
 
-		$('.copy-settings').on('click', function(e) {
-			e.preventDefault();
-			socket.emit('admin.categories.getNames', function(err, categories) {
-				if (err) {
-					return app.alertError(err.message);
-				}
-
-				templates.parse('admin/partials/categories/select-category', {
-					categories: categories
-				}, function(html) {
-					function submit() {
-						var formData = modal.find('form').serializeObject();
-
-						socket.emit('admin.categories.copySettingsFrom', {fromCid: formData['select-cid'], toCid: ajaxify.data.category.cid}, function(err) {
-							if (err) {
-								return app.alertError(err.message);
-							}
-							app.alertSuccess('Settings Copied!');
-							ajaxify.refresh();
-						});
-
-						modal.modal('hide');
-						return false;
+		$('.copy-settings').on('click', function() {
+			selectCategoryModal(function(cid) {
+				socket.emit('admin.categories.copySettingsFrom', {fromCid: cid, toCid: ajaxify.data.category.cid}, function(err) {
+					if (err) {
+						return app.alertError(err.message);
 					}
-
-					var modal = bootbox.dialog({
-						title: 'Select a Category',
-						message: html,
-						buttons: {
-							save: {
-								label: 'Copy',
-								className: 'btn-primary',
-								callback: submit
-							}
-						}
-					});
-
-					modal.find('form').on('submit', submit);
+					app.alertSuccess('Settings Copied!');
+					ajaxify.refresh();
 				});
 			});
+			return false;
 		});
 
 		$('.upload-button').on('click', function() {
@@ -229,6 +203,7 @@ define('admin/manage/category', [
 		$('.privilege-table-container').on('click', '[data-action="search.user"]', Category.addUserToPrivilegeTable);
 		$('.privilege-table-container').on('click', '[data-action="search.group"]', Category.addGroupToPrivilegeTable);
 		$('.privilege-table-container').on('click', '[data-action="copyToChildren"]', Category.copyPrivilegesToChildren);
+		$('.privilege-table-container').on('click', '[data-action="copyPrivilegesFrom"]', Category.copyPrivilegesFromCategory);
 
 		Category.exposeAssumedPrivileges();
 	};
@@ -345,7 +320,7 @@ define('admin/manage/category', [
 			autocomplete.user(inputEl, function(ev, ui) {
 				socket.emit('admin.categories.setPrivilege', {
 					cid: ajaxify.data.category.cid,
-					privilege: ['find', 'read'],
+					privilege: ['find', 'read', 'topics:read'],
 					set: true,
 					member: ui.item.user.uid
 				}, function(err) {
@@ -373,7 +348,7 @@ define('admin/manage/category', [
 			autocomplete.group(inputEl, function(ev, ui) {
 				socket.emit('admin.categories.setPrivilege', {
 					cid: ajaxify.data.category.cid,
-					privilege: ['groups:find', 'groups:read'],
+					privilege: ['groups:find', 'groups:read', 'groups:topics:read'],
 					set: true,
 					member: ui.item.group.name
 				}, function(err) {
@@ -396,6 +371,51 @@ define('admin/manage/category', [
 			app.alertSuccess('Privileges copied!');
 		});
 	};
+
+	Category.copyPrivilegesFromCategory = function() {
+		selectCategoryModal(function(cid) {
+			socket.emit('admin.categories.copyPrivilegesFrom', {toCid: ajaxify.data.category.cid, fromCid: cid}, function(err) {
+				if (err) {
+					return app.alertError(err.message);
+				}
+				ajaxify.refresh();
+			});
+		});
+	};
+
+	function selectCategoryModal(callback) {
+		socket.emit('admin.categories.getNames', function(err, categories) {
+			if (err) {
+				return app.alertError(err.message);
+			}
+
+			templates.parse('admin/partials/categories/select-category', {
+				categories: categories
+			}, function(html) {
+				function submit() {
+					var formData = modal.find('form').serializeObject();
+					callback(formData['select-cid']);
+					modal.modal('hide');
+					return false;
+				}
+
+				var modal = bootbox.dialog({
+					title: 'Select a Category',
+					message: html,
+					buttons: {
+						save: {
+							label: 'Copy',
+							className: 'btn-primary',
+							callback: submit
+						}
+					}
+				});
+
+				modal.find('form').on('submit', submit);
+			});
+		});
+	}
+
 
 	return Category;
 });

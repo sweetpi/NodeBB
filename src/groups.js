@@ -182,6 +182,7 @@ var utils = require('../public/src/utils');
 				results.base.deleted = !!parseInt(results.base.deleted, 10);
 				results.base.hidden = !!parseInt(results.base.hidden, 10);
 				results.base.system = !!parseInt(results.base.system, 10);
+				results.base.memberCount = parseInt(results.base.memberCount, 10);
 				results.base.private = (results.base.private === null || results.base.private === undefined) ? true : !!parseInt(results.base.private, 10);
 				results.base.disableJoinRequests = parseInt(results.base.disableJoinRequests, 10) === 1;
 				results.base.isMember = results.isMember;
@@ -349,7 +350,9 @@ var utils = require('../public/src/utils');
 
 	Groups.getLatestMemberPosts = function(groupName, max, uid, callback) {
 		async.waterfall([
-			async.apply(Groups.getMembers, groupName, 0, -1),
+			function(next) {
+				Groups.getMembers(groupName, 0, -1, next);
+			},
 			function(uids, next) {
 				if (!Array.isArray(uids) || !uids.length) {
 					return callback(null, []);

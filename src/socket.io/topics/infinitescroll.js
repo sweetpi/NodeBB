@@ -1,7 +1,7 @@
 'use strict';
 
 var async = require('async');
-var user = require('../../user');
+
 var topics = require('../../topics');
 var privileges = require('../../privileges');
 var meta = require('../../meta');
@@ -19,9 +19,6 @@ module.exports = function(SocketTopics) {
 			privileges: function(next) {
 				privileges.topics.get(data.tid, socket.uid, next);
 			},
-			settings: function(next) {
-				user.getSettings(socket.uid, next);
-			},
 			topic: function(next) {
 				topics.getTopicFields(data.tid, ['postcount', 'deleted'], next);
 			}
@@ -35,10 +32,10 @@ module.exports = function(SocketTopics) {
 			}
 
 			var set = 'tid:' + data.tid + ':posts';
-			if (results.settings.topicPostSort === 'most_votes') {
+			if (data.topicPostSort === 'most_votes') {
 				set = 'tid:' + data.tid + ':posts:votes';
 			}
-			var reverse = results.settings.topicPostSort === 'newest_to_oldest' || results.settings.topicPostSort === 'most_votes';
+			var reverse = data.topicPostSort === 'newest_to_oldest' || data.topicPostSort === 'most_votes';
 			var start = Math.max(0, parseInt(data.after, 10));
 
 			var infScrollPostsPerPage = 10;
@@ -96,10 +93,10 @@ module.exports = function(SocketTopics) {
 			return callback(new Error('[[error:invalid-data]]'));
 		}
 
-		var start = parseInt(data.after, 10),
-			stop = start + 9;
+		var start = parseInt(data.after, 10);
+		var stop = start + 9;
 
-		topics.getUnreadTopics(data.cid, socket.uid, start, stop, callback);
+		topics.getUnreadTopics(data.cid, socket.uid, start, stop, data.filter, callback);
 	};
 
 	SocketTopics.loadMoreFromSet = function(socket, data, callback) {

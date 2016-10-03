@@ -10,12 +10,10 @@ var nconf = require('nconf');
 
 var db = require('./database');
 var emitter = require('./emitter');
-var translator = require('../public/src/modules/translator');
 var utils = require('../public/src/utils');
 var hotswap = require('./hotswap');
 var file = require('./file');
 
-var controllers = require('./controllers');
 var app;
 var middleware;
 
@@ -31,7 +29,7 @@ var middleware;
 	Plugins.lessFiles = [];
 	Plugins.clientScripts = [];
 	Plugins.acpScripts = [];
-	Plugins.customLanguages = [];
+	Plugins.customLanguages = {};
 	Plugins.customLanguageFallbacks = {};
 	Plugins.libraryPaths = [];
 	Plugins.versionWarning = [];
@@ -85,12 +83,26 @@ var middleware;
 		Plugins.acpScripts.length = 0;
 		Plugins.libraryPaths.length = 0;
 
-		Plugins.registerHook('core', {
-			hook: 'static:app.load',
-			method: addLanguages
-		});
+		// Plugins.registerHook('core', {
+		// 	hook: 'static:app.load',
+		// 	method: addLanguages
+		// });
 
 		async.waterfall([
+			function(next) {
+				// Build language code list
+				fs.readdir(path.join(__dirname, '../public/language'), function(err, directories) {
+					if (err) {
+						return next(err);
+					}
+
+					Plugins.languageCodes = directories.filter(function(code) {
+						return code !== 'TODO';
+					});
+
+					next();
+				});
+			},
 			function(next) {
 				db.getSortedSetRange('plugins:active', 0, -1, next);
 			},
@@ -135,11 +147,13 @@ var middleware;
 	Plugins.reloadRoutes = function(callback) {
 		callback = callback || function() {};
 		var router = express.Router();
+
 		router.hotswapId = 'plugins';
 		router.render = function() {
 			app.render.apply(app, arguments);
 		};
 
+		var controllers = require('./controllers');
 		Plugins.fireHook('static:app.load', {app: app, router: router, middleware: middleware, controllers: controllers}, function(err) {
 			if (err) {
 				return winston.error('[plugins] Encountered error while executing post-router plugins hooks: ' + err.message);
@@ -196,7 +210,11 @@ var middleware;
 								}
 							});
 						} else {
-							winston.warn('[plugins/' + plugin.id + '] A templates directory was defined for this plugin, but was not found.');
+							if (err) {
+								winston.error(err);
+							} else {
+								winston.warn('[plugins/' + plugin.id + '] A templates directory was defined for this plugin, but was not found.');
+							}
 						}
 
 						next(false);
@@ -242,6 +260,7 @@ var middleware;
 		}, function(err, res, body) {
 			if (err) {
 				winston.error('Error parsing plugins : ' + err.message);
+				return callback(err);
 			}
 
 			Plugins.normalise(body, callback);
@@ -382,60 +401,10 @@ var middleware;
 						next();
 					});
 				}, function(err) {
-					next(null, plugins);
+					next(err, plugins);
 				});
 			}
 		], callback);
 	};
-
-	Plugins.clearRequireCache = function(next) {
-		var cached = Object.keys(require.cache);
-		async.waterfall([
-			async.apply(async.map, Plugins.libraryPaths, fs.realpath),
-			function(paths, next) {
-				paths = paths.map(function(pluginLib) {
-					var parent = path.dirname(pluginLib);
-					return cached.filter(function(libPath) {
-						return libPath.indexOf(parent) !== -1;
-					});
-				}).reduce(function(prev, cur) {
-					return prev.concat(cur);
-				});
-
-				Plugins.fireHook('filter:plugins.clearRequireCache', {paths: paths}, next);
-			},
-			function(data, next) {
-				for (var x=0,numPaths=data.paths.length;x<numPaths;x++) {
-					delete require.cache[data.paths[x]];
-				}
-				winston.verbose('[plugins] Plugin libraries removed from Node.js cache');
-
-				next();
-			}
-		], next);
-	};
-
-	function addLanguages(params, callback) {
-		Plugins.customLanguages.forEach(function(lang) {
-			params.router.get('/language' + lang.route, function(req, res, next) {
-				res.json(lang.file);
-			});
-
-			var components = lang.route.split('/'),
-				language = components[1],
-				filename = components[2].replace('.json', '');
-
-			translator.addTranslation(language, filename, lang.file);
-		});
-
-		for(var resource in Plugins.customLanguageFallbacks) {
-			params.router.get('/language/:lang/' + resource + '.json', function(req, res, next) {
-				winston.verbose('[translator] No resource file found for ' + req.params.lang + '/' + path.basename(req.path, '.json') + ', using provided fallback language file');
-				res.sendFile(Plugins.customLanguageFallbacks[path.basename(req.path, '.json')]);
-			});
-		}
-
-		callback(null);
-	}
 
 }(exports));

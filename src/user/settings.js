@@ -1,10 +1,10 @@
 
 'use strict';
 
-var	async = require('async'),
-	meta = require('../meta'),
-	db = require('../database'),
-	plugins = require('../plugins');
+var async = require('async');
+var meta = require('../meta');
+var db = require('../database');
+var plugins = require('../plugins');
 
 module.exports = function(User) {
 
@@ -65,7 +65,6 @@ module.exports = function(User) {
 			settings.usePagination = parseInt(getSetting(settings, 'usePagination', 0), 10) === 1;
 			settings.topicsPerPage = Math.min(settings.topicsPerPage ? parseInt(settings.topicsPerPage, 10) : defaultTopicsPerPage, defaultTopicsPerPage);
 			settings.postsPerPage = Math.min(settings.postsPerPage ? parseInt(settings.postsPerPage, 10) : defaultPostsPerPage, defaultPostsPerPage);
-			settings.notificationSounds = parseInt(getSetting(settings, 'notificationSounds', 0), 10) === 1;
 			settings.userLang = settings.userLang || meta.config.defaultLang || 'en_GB';
 			settings.topicPostSort = getSetting(settings, 'topicPostSort', 'oldest_to_newest');
 			settings.categoryTopicSort = getSetting(settings, 'categoryTopicSort', 'newest_to_oldest');
@@ -113,7 +112,6 @@ module.exports = function(User) {
 			usePagination: data.usePagination,
 			topicsPerPage: Math.min(data.topicsPerPage, parseInt(meta.config.topicsPerPage, 10) || 20),
 			postsPerPage: Math.min(data.postsPerPage, parseInt(meta.config.postsPerPage, 10) || 20),
-			notificationSounds: data.notificationSounds,
 			userLang: data.userLang || meta.config.defaultLang,
 			followTopicsOnCreate: data.followTopicsOnCreate,
 			followTopicsOnReply: data.followTopicsOnReply,
@@ -122,9 +120,11 @@ module.exports = function(User) {
 			restrictChat: data.restrictChat,
 			topicSearchEnabled: data.topicSearchEnabled,
 			delayImageLoading: data.delayImageLoading,
-			groupTitle: data.groupTitle,
-			homePageRoute: data.homePageCustom || data.homePageRoute,
-			scrollToMyPost: data.scrollToMyPost
+			homePageRoute : ((data.homePageRoute === 'custom' ? data.homePageCustom : data.homePageRoute) || '').replace(/^\//, ''),
+			scrollToMyPost: data.scrollToMyPost,
+			notificationSound: data.notificationSound,
+			incomingChatSound: data.incomingChatSound,
+			outgoingChatSound: data.outgoingChatSound
 		};
 
 		if (data.bootswatchSkin) {
@@ -136,7 +136,7 @@ module.exports = function(User) {
 				db.setObject('user:' + uid + ':settings', settings, next);
 			},
 			function(next) {
-				updateDigestSetting(uid, data.dailyDigestFreq, next);
+				User.updateDigestSetting(uid, data.dailyDigestFreq, next);
 			},
 			function(next) {
 				User.getSettings(uid, next);
@@ -144,7 +144,7 @@ module.exports = function(User) {
 		], callback);
 	};
 
-	function updateDigestSetting(uid, dailyDigestFreq, callback) {
+	User.updateDigestSetting = function(uid, dailyDigestFreq, callback) {
 		async.waterfall([
 			function(next) {
 				db.sortedSetsRemove(['digest:day:uids', 'digest:week:uids', 'digest:month:uids'], uid, next);
@@ -157,22 +157,9 @@ module.exports = function(User) {
 				}
 			}
 		], callback);
-	}
+	};
 
 	User.setSetting = function(uid, key, value, callback) {
 		db.setObjectField('user:' + uid + ':settings', key, value, callback);
-	};
-
-	User.setGroupTitle = function(groupName, uid, callback) {
-		if (groupName === 'registered-users') {
-			return callback();
-		}
-		db.getObjectField('user:' + uid + ':settings', 'groupTitle', function(err, currentTitle) {
-			if (err || (currentTitle || currentTitle === '')) {
-				return callback(err);
-			}
-
-			User.setSetting(uid, 'groupTitle', groupName, callback);
-		});
 	};
 };

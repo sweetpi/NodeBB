@@ -1,20 +1,20 @@
 'use strict';
 
-var async = require('async'),
-	path = require('path'),
-	fs = require('fs'),
-	os = require('os'),
-	nconf = require('nconf'),
-	crypto = require('crypto'),
-	winston = require('winston'),
-	request = require('request'),
-	mime = require('mime'),
+var async = require('async');
+var path = require('path');
+var fs = require('fs');
+var os = require('os');
+var nconf = require('nconf');
+var crypto = require('crypto');
+var winston = require('winston');
+var request = require('request');
+var mime = require('mime');
 
-	plugins = require('../plugins'),
-	file = require('../file'),
-	image = require('../image'),
-	meta = require('../meta'),
-	db = require('../database');
+var plugins = require('../plugins');
+var file = require('../file');
+var image = require('../image');
+var meta = require('../meta');
+var db = require('../database');
 
 module.exports = function(User) {
 
@@ -25,24 +25,28 @@ module.exports = function(User) {
 		var updateUid = uid;
 		var imageDimension = parseInt(meta.config.profileImageDimension, 10) || 128;
 		var convertToPNG = parseInt(meta.config['profile:convertProfileImageToPNG'], 10) === 1;
+		var keepAllVersions = parseInt(meta.config['profile:keepAllUserImages'], 10) === 1;
 		var uploadedImage;
 
+		if (parseInt(meta.config.allowProfileImageUploads) !== 1) {
+			return callback(new Error('[[error:profile-image-uploads-disabled]]'));
+		}
+
+		if (picture.size > uploadSize * 1024) {
+			return callback(new Error('[[error:file-too-big, ' + uploadSize + ']]'));
+		}
+
+		if (!extension) {
+			return callback(new Error('[[error:invalid-image-extension]]'));
+		}
+
 		async.waterfall([
-			function(next) {
-				next(parseInt(meta.config.allowProfileImageUploads) !== 1 ? new Error('[[error:profile-image-uploads-disabled]]') : null);
-			},
-			function(next) {
-				next(picture.size > uploadSize * 1024 ? new Error('[[error:file-too-big, ' + uploadSize + ']]') : null);
-			},
-			function(next) {
-				next(!extension ? new Error('[[error:invalid-image-extension]]') : null);
-			},
 			function(next) {
 				if (plugins.hasListeners('filter:uploadImage')) {
 					return plugins.fireHook('filter:uploadImage', {image: picture, uid: updateUid}, next);
 				}
 
-				var filename = updateUid + '-profileimg' + (convertToPNG ? '.png' : extension);
+				var filename = updateUid + '-profileimg' + (keepAllVersions ? '-' + Date.now() : '') + (convertToPNG ? '.png' : extension);
 
 				async.waterfall([
 					function(next) {
@@ -57,28 +61,18 @@ module.exports = function(User) {
 						}, next);
 					},
 					function(next) {
-						if (convertToPNG) {
-							image.normalise(picture.path, extension, next);
-						} else {
-							next();
+						if (!convertToPNG) {
+							return next();
 						}
+						async.series([
+							async.apply(image.normalise, picture.path, extension),
+							async.apply(fs.rename, picture.path + '.png', picture.path)
+						], function(err) {
+							next(err);
+						});
 					},
 					function(next) {
-						User.getUserField(updateUid, 'uploadedpicture', next);
-					},
-					function(oldpicture, next) {
-						if (!oldpicture) {
-							return file.saveFileToLocal(filename, 'profile', picture.path, next);
-						}
-						var oldpicturePath = path.join(nconf.get('base_dir'), nconf.get('upload_path'), 'profile', path.basename(oldpicture));
-
-						fs.unlink(oldpicturePath, function (err) {
-							if (err) {
-								winston.error(err);
-							}
-
-							file.saveFileToLocal(filename, 'profile', picture.path, next);
-						});
+						file.saveFileToLocal(filename, 'profile', picture.path, next);
 					},
 				], next);
 			},
@@ -130,6 +124,7 @@ module.exports = function(User) {
 	};
 
 	User.updateCoverPicture = function(data, callback) {
+		var keepAllVersions = parseInt(meta.config['profile:keepAllUserImages'], 10) === 1;
 		var url, md5sum;
 
 		if (!data.imageData && data.position) {
@@ -177,7 +172,7 @@ module.exports = function(User) {
 					return plugins.fireHook('filter:uploadImage', {image: image, uid: data.uid}, next);
 				}
 
-				var filename = data.uid + '-profilecover';
+				var filename = data.uid + '-profilecover' + (keepAllVersions ? '-' + Date.now() : '');
 				async.waterfall([
 					function (next) {
 						file.isFileTypeAllowed(data.file.path, next);
@@ -208,6 +203,10 @@ module.exports = function(User) {
 		], function(err) {
 			if (err) {
 				return fs.unlink(data.file.path, function(unlinkErr) {
+					if (unlinkErr) {
+						winston.error(unlinkErr);
+					}
+
 					callback(err);	// send back the original error
 				});
 			}

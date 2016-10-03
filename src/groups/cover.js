@@ -6,6 +6,8 @@ var path = require('path');
 var fs = require('fs');
 var crypto = require('crypto');
 var Jimp = require('jimp');
+var mime = require('mime');
+var winston = require('winston');
 
 var db = require('../database');
 var file = require('../file');
@@ -29,6 +31,7 @@ module.exports = function(Groups) {
 
 		var tempPath = data.file ? data.file : '';
 		var url;
+		var type = data.file ? mime.lookup(data.file) : 'image/png';
 
 		async.waterfall([
 			function (next) {
@@ -41,7 +44,8 @@ module.exports = function(Groups) {
 				tempPath = _tempPath;
 				uploadsController.uploadGroupCover(uid, {
 					name: 'groupCover',
-					path: tempPath
+					path: tempPath,
+					type: type
 				}, next);
 			},
 			function (uploadData, next) {
@@ -54,7 +58,8 @@ module.exports = function(Groups) {
 			function (next) {
 				uploadsController.uploadGroupCover(uid, {
 					name: 'groupCoverThumb',
-					path: tempPath
+					path: tempPath,
+					type: type
 				}, next);
 			},
 			function (uploadData, next) {
@@ -66,6 +71,10 @@ module.exports = function(Groups) {
 		], function (err) {
 			if (err) {
 				return fs.unlink(tempPath, function(unlinkErr) {
+					if (unlinkErr) {
+						winston.error(unlinkErr);
+					}
+
 					callback(err);	// send back original error
 				});
 			}
@@ -104,7 +113,7 @@ module.exports = function(Groups) {
 		md5sum = md5sum.digest('hex');
 
 		// Save image
-		var tempPath = path.join(nconf.get('base_dir'), nconf.get('upload_path'), md5sum);
+		var tempPath = path.join(nconf.get('base_dir'), nconf.get('upload_path'), md5sum) + '.png';
 		var buffer = new Buffer(imageData.slice(imageData.indexOf('base64') + 7), 'base64');
 
 		fs.writeFile(tempPath, buffer, {
@@ -115,7 +124,7 @@ module.exports = function(Groups) {
 	}
 
 	Groups.removeCover = function(data, callback) {
-		db.deleteObjectField('group:' + data.groupName, 'cover:url', callback);
+		db.deleteObjectFields('group:' + data.groupName, ['cover:url', 'cover:thumb:url'], callback);
 	};
 
 };

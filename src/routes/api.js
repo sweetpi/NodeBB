@@ -1,8 +1,8 @@
 "use strict";
 
-var express = require('express'),
+var express = require('express');
 
-	uploadsController = require('../controllers/uploads');
+var uploadsController = require('../controllers/uploads');
 
 module.exports =  function(app, middleware, controllers) {
 
@@ -12,6 +12,7 @@ module.exports =  function(app, middleware, controllers) {
 	router.get('/config', middleware.applyCSRF, controllers.api.getConfig);
 	router.get('/widgets/render', controllers.api.renderWidgets);
 
+	router.get('/me', middleware.checkGlobalPrivacySettings, controllers.api.getCurrentUser);
 	router.get('/user/uid/:uid', middleware.checkGlobalPrivacySettings, controllers.api.getUserByUID);
 	router.get('/user/username/:username', middleware.checkGlobalPrivacySettings, controllers.api.getUserByUsername);
 	router.get('/user/email/:email', middleware.checkGlobalPrivacySettings, controllers.api.getUserByEmail);
@@ -22,8 +23,9 @@ module.exports =  function(app, middleware, controllers) {
 
 	router.get('/categories/:cid/moderators', controllers.api.getModerators);
 	router.get('/recent/posts/:term?', controllers.api.getRecentPosts);
-	router.get('/unread/total', middleware.authenticate, controllers.unread.unreadTotal);
+	router.get('/unread/:filter?/total', middleware.authenticate, controllers.unread.unreadTotal);
 	router.get('/topic/teaser/:topic_id', controllers.topics.teaser);
+	router.get('/topic/pagination/:topic_id', controllers.topics.pagination);
 
 	var multipart = require('connect-multiparty');
 	var multipartMiddleware = multipart();

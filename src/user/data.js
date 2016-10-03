@@ -50,6 +50,10 @@ module.exports = function(User) {
 			addField('uploadedpicture');
 		}
 
+		if (fields.indexOf('status') !== -1) {
+			addField('lastonline');
+		}
+
 		db.getObjectsFields(keys, fields, function(err, users) {
 			if (err) {
 				return callback(err);
@@ -94,7 +98,9 @@ module.exports = function(User) {
 				return;
 			}
 
-			user.username = validator.escape(user.username ? user.username.toString() : '');
+			if (user.hasOwnProperty('username')) {
+				user.username = validator.escape(user.username ? user.username.toString() : '');
+			}
 
 			if (user.password) {
 				user.password = undefined;
@@ -113,6 +119,10 @@ module.exports = function(User) {
 				user.picture = user.uploadedpicture = user.picture.startsWith('http') ? user.picture : nconf.get('relative_path') + user.picture;
 			} else if (user.uploadedpicture) {
 				user.uploadedpicture = user.uploadedpicture.startsWith('http') ? user.uploadedpicture : nconf.get('relative_path') + user.uploadedpicture;
+			}
+
+			if (user.hasOwnProperty('status') && parseInt(user.lastonline, 10)) {
+				user.status = User.getStatus(user);
 			}
 
 			for(var i=0; i<fieldsToRemove.length; ++i) {

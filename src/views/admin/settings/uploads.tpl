@@ -20,16 +20,20 @@
 				</label>
 			</div>
 
-			<div class="checkbox">
-				<label class="mdl-switch mdl-js-switch mdl-js-ripple-effect">
-					<input class="mdl-switch__input" type="checkbox" data-field="allowGuestUploads">
-					<span class="mdl-switch__label"><strong>Allow Guests to Upload Files</strong></span>
-				</label>
-			</div>
-			
 			<div class="form-group">
-				<label for="maximumFileSize">Maximum File Size</label>
+				<label for="maximumImageWidth">Resize images down to specified width (in pixels)</label>
+				<input type="text" class="form-control" value="760" data-field="maximumImageWidth" placeholder="760">
+				<p class="help-block">
+					(in pixels, default: 760 pixels, set to 0 to disable)
+				</p>
+			</div>
+
+			<div class="form-group">
+				<label for="maximumFileSize">Maximum File Size (in KiB)</label>
 				<input type="text" class="form-control" value="2048" data-field="maximumFileSize">
+				<p class="help-block">
+					(in kilobytes, default: 2048 KiB)
+				</p>
 			</div>
 
 			<div class="checkbox">
@@ -41,7 +45,7 @@
 
 			<div class="form-group">
 				<label for="topicThumbSize">Topic Thumb Size</label>
-				<input type="text" class="form-control" value="120" data-field="topicThumbSize"> 
+				<input type="text" class="form-control" value="120" data-field="topicThumbSize">
 			</div>
 
 			<div class="form-group">
@@ -110,6 +114,13 @@
 				<p class="help-block">
 					(in kilobytes, default: 2,048 KiB)
 				</p>
+			</div>
+
+			<div class="checkbox">
+				<label class="mdl-switch mdl-js-switch mdl-js-ripple-effect">
+					<input class="mdl-switch__input" type="checkbox" data-field="profile:keepAllUserImages">
+					<span class="mdl-switch__label"><strong>Keep old versions of avatars and profile covers on the server</strong></span>
+				</label>
 			</div>
 		</form>
 	</div>

@@ -1,14 +1,42 @@
 "use strict";
-/*global config, translator, componentHandler, define, socket, app, ajaxify, utils, bootbox, Slideout, RELATIVE_PATH*/
+/*global config, componentHandler, socket, app, bootbox, Slideout, NProgress*/
 
 (function() {
+	var logoutTimer = 0;
+	function startLogoutTimer() {
+		if (logoutTimer) {
+			clearTimeout(logoutTimer);
+		}
+
+		logoutTimer = setTimeout(function() {
+			require(['translator'], function(translator) {
+				translator.translate('[[login:logged-out-due-to-inactivity]]', function(translated) {
+					bootbox.alert({
+						closeButton: false,
+						message: translated,
+						callback: function(){
+							window.location.reload();
+						}
+					});
+				});
+			});
+		}, 3600000);
+	}
+
+	$(window).on('action:ajaxify.end', function() {
+		showCorrectNavTab();
+		startLogoutTimer();
+	});
+
+	function showCorrectNavTab() {
+		// show correct tab if url has #
+		if (window.location.hash) {
+			$('.nav-pills a[href="' + window.location.hash + '"]').tab('show');
+		}
+	}
+
 	$(document).ready(function() {
 		setupKeybindings();
-
-		// on page reload show correct tab if url has #
-		if (window.location.hash) {
-			$('.nav-pills a[href=' + window.location.hash + ']').tab('show');
-		}
 
 		if(!/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)) {
 			require(['admin/modules/search'], function(search) {
@@ -20,16 +48,25 @@
 		app.alert = launchSnackbar;
 
 		configureSlidemenu();
+		setupNProgress();
 	});
 
 	$(window).on('action:ajaxify.contentLoaded', function(ev, data) {
-		var url = data.url;
-
 		selectMenuItem(data.url);
 		setupRestartLinks();
 
 		componentHandler.upgradeDom();
 	});
+
+	function setupNProgress() {
+		$(window).on('action:ajaxify.start', function() {
+			NProgress.set(0.7);
+		});
+
+		$(window).on('action:ajaxify.end', function() {
+			NProgress.done();
+		});
+	}
 
 	function setupKeybindings() {
 		require(['mousetrap'], function(mousetrap) {
@@ -43,7 +80,7 @@
 				socket.emit('admin.restart');
 			});
 
-			mousetrap.bind('/', function(e) {
+			mousetrap.bind('/', function() {
 				$('#acp-search input').focus();
 
 				return false;

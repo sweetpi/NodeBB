@@ -8,15 +8,13 @@ var plugins = require('../plugins');
 var groups = require('../groups');
 var meta = require('../meta');
 
-
 module.exports = function(User) {
 
 	User.create = function(data, callback) {
-
 		data.username = data.username.trim();
 		data.userslug = utils.slugify(data.username);
 		if (data.email !== undefined) {
-			data.email = validator.escape(data.email.trim());
+			data.email = validator.escape(String(data.email).trim());
 		}
 
 		User.isDataValid(data, function(err) {
@@ -28,7 +26,7 @@ module.exports = function(User) {
 			var userData = {
 				'username': data.username,
 				'userslug': data.userslug,
-				'email': data.email,
+				'email': data.email || '',
 				'joindate': timestamp,
 				'lastonline': timestamp,
 				'picture': '',
@@ -133,6 +131,9 @@ module.exports = function(User) {
 										async.apply(User.reset.updateExpiry, userData.uid)
 									], next);
 								});
+							},
+							function(next) {
+								User.updateDigestSetting(userData.uid, meta.config.dailyDigestSetting, next);
 							}
 						], next);
 					},

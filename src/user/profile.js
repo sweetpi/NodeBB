@@ -7,12 +7,13 @@ var S = require('string');
 var utils = require('../../public/src/utils');
 var meta = require('../meta');
 var db = require('../database');
+var groups = require('../groups');
 var plugins = require('../plugins');
 
 module.exports = function(User) {
 
 	User.updateProfile = function(uid, data, callback) {
-		var fields = ['username', 'email', 'fullname', 'website', 'location', 'birthday', 'signature', 'aboutme'];
+		var fields = ['username', 'email', 'fullname', 'website', 'location', 'groupTitle', 'birthday', 'signature', 'aboutme', 'picture', 'uploadedpicture'];
 
 		plugins.fireHook('filter:user.updateProfile', {uid: uid, data: data, fields: fields}, function(err, data) {
 			if (err) {
@@ -48,6 +49,10 @@ module.exports = function(User) {
 				}
 
 				User.getUserField(uid, 'email', function(err, email) {
+					if (err) {
+						return next(err);
+					}
+
 					if(email === data.email) {
 						return next();
 					}
@@ -100,7 +105,21 @@ module.exports = function(User) {
 				});
 			}
 
-			async.series([isAboutMeValid, isSignatureValid, isEmailAvailable, isUsernameAvailable], function(err) {
+			function isGroupTitleValid(next) {
+				if (data.groupTitle === 'registered-users' || groups.isPrivilegeGroup(data.groupTitle)) {
+					next(new Error('[[error:invalid-group-title]]'));
+				} else {
+					next();
+				}
+			}
+
+			async.series([
+				isAboutMeValid, 
+				isSignatureValid, 
+				isEmailAvailable, 
+				isUsernameAvailable,
+				isGroupTitleValid
+			], function(err) {
 				if (err) {
 					return callback(err);
 				}
@@ -159,6 +178,7 @@ module.exports = function(User) {
 					function(next) {
 						db.sortedSetAdd('email:uid', uid, newEmail.toLowerCase(), next);
 					},
+					async.apply(db.sortedSetAdd, 'user:' + uid + ':emails', Date.now(), newEmail + ':' + Date.now()),
 					function(next) {
 						db.sortedSetAdd('email:sorted',  0, newEmail.toLowerCase() + ':' + uid, next);
 					},
@@ -200,7 +220,8 @@ module.exports = function(User) {
 				function(next) {
 					async.series([
 						async.apply(db.sortedSetRemove, 'username:sorted', userData.username.toLowerCase() + ':' + uid),
-						async.apply(db.sortedSetAdd, 'username:sorted', 0, newUsername.toLowerCase() + ':' + uid)
+						async.apply(db.sortedSetAdd, 'username:sorted', 0, newUsername.toLowerCase() + ':' + uid),
+						async.apply(db.sortedSetAdd, 'user:' + uid + ':usernames', Date.now(), newUsername + ':' + Date.now())
 					], next);
 				},
 			], callback);

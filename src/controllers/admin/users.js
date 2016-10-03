@@ -5,7 +5,8 @@ var user = require('../../user');
 var meta = require('../../meta');
 var db = require('../../database');
 var pagination = require('../../pagination');
-
+var events = require('../../events');
+var plugins = require('../../plugins');
 
 var usersController = {};
 
@@ -26,6 +27,10 @@ usersController.notValidated = function(req, res, next) {
 
 usersController.noPosts = function(req, res, next) {
 	getUsersByScore('users:postcount', 'noposts', 0, 0, req, res, next);
+};
+
+usersController.flagged = function(req, res, next) {
+	getUsersByScore('users:flags', 'mostflags', 1, '+inf', req, res, next);
 };
 
 usersController.inactive = function(req, res, next) {
@@ -82,12 +87,16 @@ usersController.registrationQueue = function(req, res, next) {
 	var start = (page - 1) * 20;
 	var stop = start + itemsPerPage - 1;
 	var invitations;
+
 	async.parallel({
 		registrationQueueCount: function(next) {
 			db.sortedSetCard('registration:queue', next);
 		},
 		users: function(next) {
 			user.getRegistrationQueue(start, stop, next);
+		},
+		customHeaders: function(next) {
+			plugins.fireHook('filter:admin.registrationQueue.customHeaders', {headers: []}, next);
 		},
 		invites: function(next) {
 			async.waterfall([
@@ -127,6 +136,7 @@ usersController.registrationQueue = function(req, res, next) {
 		}
 		var pageCount = Math.max(1, Math.ceil(data.registrationQueueCount / itemsPerPage));
 		data.pagination = pagination.create(page, pageCount);
+		data.customHeaders = data.customHeaders.headers;
 		res.render('admin/manage/registration', data);
 	});
 };
@@ -166,10 +176,22 @@ function render(req, res, data) {
 	data.search_display = 'hidden';
 	data.pagination = pagination.create(data.page, data.pageCount, req.query);
 	data.requireEmailConfirmation = parseInt(meta.config.requireEmailConfirmation, 10) === 1;
+
+	var registrationType = meta.config.registrationType;
+
+	data.inviteOnly = registrationType === 'invite-only' || registrationType === 'admin-invite-only';
+	data.adminInviteOnly = registrationType === 'admin-invite-only';
+
 	res.render('admin/manage/users', data);
 }
 
 usersController.getCSV = function(req, res, next) {
+	events.log({
+		type: 'getUsersCSV',
+		uid: req.user.uid,
+		ip: req.ip
+	});
+
 	user.getUsersCSV(function(err, data) {
 		if (err) {
 			return next(err);

@@ -1,40 +1,39 @@
 "use strict";
 
-var	async = require('async'),
-	winston = require('winston'),
+var async = require('async');
+var winston = require('winston');
+var nconf = require('nconf');
 
+var meta = require('../meta');
+var plugins = require('../plugins');
+var widgets = require('../widgets');
+var user = require('../user');
+var logger = require('../logger');
+var events = require('../events');
+var emailer = require('../emailer');
+var db = require('../database');
+var analytics = require('../analytics');
+var index = require('./index');
 
-	meta = require('../meta'),
-	plugins = require('../plugins'),
-	widgets = require('../widgets'),
-	user = require('../user'),
-
-	logger = require('../logger'),
-	events = require('../events'),
-	emailer = require('../emailer'),
-	db = require('../database'),
-	analytics = require('../analytics'),
-	index = require('./index'),
-
-
-	SocketAdmin = {
-		user: require('./admin/user'),
-		categories: require('./admin/categories'),
-		groups: require('./admin/groups'),
-		tags: require('./admin/tags'),
-		rewards: require('./admin/rewards'),
-		navigation: require('./admin/navigation'),
-		rooms: require('./admin/rooms'),
-		social: require('./admin/social'),
-		themes: {},
-		plugins: {},
-		widgets: {},
-		config: {},
-		settings: {},
-		email: {},
-		analytics: {},
-		logs: {}
-	};
+var SocketAdmin = {
+	user: require('./admin/user'),
+	categories: require('./admin/categories'),
+	groups: require('./admin/groups'),
+	tags: require('./admin/tags'),
+	rewards: require('./admin/rewards'),
+	navigation: require('./admin/navigation'),
+	rooms: require('./admin/rooms'),
+	social: require('./admin/social'),
+	themes: {},
+	plugins: {},
+	widgets: {},
+	config: {},
+	settings: {},
+	email: {},
+	analytics: {},
+	logs: {},
+	errors: {}
+};
 
 SocketAdmin.before = function(socket, method, data, next) {
 	if (!socket.uid) {
@@ -50,22 +49,6 @@ SocketAdmin.before = function(socket, method, data, next) {
 	});
 };
 
-SocketAdmin.reload = function(socket, data, callback) {
-	events.log({
-		type: 'reload',
-		uid: socket.uid,
-		ip: socket.ip
-	});
-	if (process.send) {
-		process.send({
-			action: 'reload'
-		});
-		callback();
-	} else {
-		meta.reload(callback);
-	}
-};
-
 SocketAdmin.restart = function(socket, data, callback) {
 	events.log({
 		type: 'restart',
@@ -75,6 +58,11 @@ SocketAdmin.restart = function(socket, data, callback) {
 	meta.restart();
 	callback();
 };
+
+/**
+ * Reload deprecated as of v1.1.2+, remove in v2.x
+ */
+SocketAdmin.reload = SocketAdmin.restart;
 
 SocketAdmin.fireEvent = function(socket, data, callback) {
 	index.server.emit(data.name, data.payload || {});
@@ -91,6 +79,9 @@ SocketAdmin.themes.set = function(socket, data, callback) {
 	}
 
 	var wrappedCallback = function(err) {
+		if (err) {
+			return callback(err);
+		}
 		meta.themes.set(data, callback);
 	};
 	if (data.type === 'bootswatch') {
@@ -204,7 +195,8 @@ SocketAdmin.email.test = function(socket, data, callback) {
 	var site_title = meta.config.title || 'NodeBB';
 	emailer.send(data.template, socket.uid, {
 		subject: '[' + site_title + '] Test Email',
-		site_title: site_title
+		site_title: site_title,
+		url: nconf.get('url')
 	}, callback);
 };
 
@@ -255,18 +247,8 @@ SocketAdmin.logs.clear = function(socket, data, callback) {
 	meta.logs.clear(callback);
 };
 
-SocketAdmin.getMoreEvents = function(socket, next, callback) {
-	var start = parseInt(next, 10);
-	if (start < 0) {
-		return callback(null, {data: [], next: next});
-	}
-	var stop = start + 10;
-	events.getEvents(start, stop, function(err, events) {
-		if (err) {
-			return callback(err);
-		}
-		callback(null, {events: events, next: stop + 1});
-	});
+SocketAdmin.errors.clear = function(socket, data, callback) {
+	meta.errors.clear(callback);
 };
 
 SocketAdmin.deleteAllEvents = function(socket, data, callback) {

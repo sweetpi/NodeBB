@@ -1,7 +1,8 @@
 "use strict";
 
-
 var async = require('async');
+var validator = require('validator');
+
 var db = require('../../database');
 var groups = require('../../groups');
 var user = require('../../user');
@@ -142,7 +143,19 @@ User.sendPasswordResetEmail = function(socket, uids, callback) {
 };
 
 User.deleteUsers = function(socket, uids, callback) {
-	if(!Array.isArray(uids)) {
+	deleteUsers(socket, uids, function(uid, next) {
+		user.deleteAccount(uid, next);
+	}, callback);
+};
+
+User.deleteUsersAndContent = function(socket, uids, callback) {
+	deleteUsers(socket, uids, function(uid, next) {
+		user.delete(socket.uid, uid, next);
+	}, callback);
+};
+
+function deleteUsers(socket, uids, method, callback) {
+	if (!Array.isArray(uids)) {
 		return callback(new Error('[[error:invalid-data]]'));
 	}
 
@@ -156,7 +169,7 @@ User.deleteUsers = function(socket, uids, callback) {
 					return next(new Error('[[error:cant-delete-other-admins]]'));
 				}
 
-				user.delete(socket.uid, uid, next);
+				method(uid, next);
 			},
 			function (next) {
 				events.log({
@@ -169,7 +182,7 @@ User.deleteUsers = function(socket, uids, callback) {
 			}
 		], next);
 	}, callback);
-};
+}
 
 User.search = function(socket, data, callback) {
 	user.search({query: data.query, searchBy: data.searchBy, uid: socket.uid}, function(err, searchData) {
@@ -185,25 +198,15 @@ User.search = function(socket, data, callback) {
 			return user && user.uid;
 		});
 
-		async.parallel({
-			users: function(next) {
-				user.getUsersFields(uids, ['email'], next);
-			},
-			flagCounts: function(next) {
-				var sets = uids.map(function(uid) {
-					return 'uid:' + uid + ':flagged_by';
-				});
-				db.setsCount(sets, next);
-			}
-		}, function(err, results) {
+		user.getUsersFields(uids, ['email', 'flags'], function(err, userInfo) {
 			if (err) {
 				return callback(err);
 			}
 
 			userData.forEach(function(user, index) {
-				if (user) {
-					user.email = (results.users[index] && results.users[index].email) || '';
-					user.flags = results.flagCounts[index] || 0;
+				if (user && userInfo[index]) {
+					user.email = validator.escape(String(userInfo[index].email || ''));
+					user.flags = userInfo[index].flags || 0;
 				}
 			});
 
@@ -224,5 +227,8 @@ User.rejectRegistration = function(socket, data, callback) {
 	user.rejectRegistration(data.username, callback);
 };
 
+User.restartJobs = function(socket, data, callback) {
+	user.startJobs(callback);
+};
 
 module.exports = User;

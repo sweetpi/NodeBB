@@ -1,12 +1,12 @@
 "use strict";
 
-var fs = require('fs'),
-	nconf = require('nconf'),
-	path = require('path'),
-	winston = require('winston'),
-	jimp = require('jimp'),
+var fs = require('fs');
+var nconf = require('nconf');
+var path = require('path');
+var winston = require('winston');
+var jimp = require('jimp');
 
-	utils = require('../public/src/utils');
+var utils = require('../public/src/utils');
 
 var file = {};
 
@@ -22,14 +22,14 @@ file.saveFileToLocal = function(filename, folder, tempPath, callback) {
 
 	var uploadPath = path.join(nconf.get('base_dir'), nconf.get('upload_path'), folder, filename);
 
-	winston.verbose('Saving file '+ filename +' to : ' + uploadPath);
+	winston.verbose('Saving file '+ filename + ' to : ' + uploadPath);
 
 	var is = fs.createReadStream(tempPath);
 	var os = fs.createWriteStream(uploadPath);
-
 	is.on('end', function () {
 		callback(null, {
-			url: nconf.get('upload_url') + folder + '/' + filename
+			url: nconf.get('upload_url') + '/' + folder + '/' + filename,
+			path: uploadPath
 		});
 	});
 
@@ -50,6 +50,13 @@ file.base64ToLocal = function(imageData, uploadPath, callback) {
 };
 
 file.isFileTypeAllowed = function(path, callback) {
+	var plugins = require('./plugins');
+	if (plugins.hasListeners('filter:file.isFileTypeAllowed')) {
+		return plugins.fireHook('filter:file.isFileTypeAllowed', path, function(err) {
+			callback(err);
+		});
+	}
+
 	// Attempt to read the file, if it passes, file type is allowed
 	jimp.read(path, function(err) {
 		callback(err);

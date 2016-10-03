@@ -3,18 +3,17 @@
 /* globals define, app, utils, socket, config, ajaxify, bootbox */
 
 
-define('forum/register', ['csrf', 'translator'], function(csrf, translator) {
+define('forum/register', ['translator'], function(translator) {
 	var Register = {},
 		validationError = false,
-		successIcon = '<i class="fa fa-check"></i>';
+		successIcon = '';
 
 	Register.init = function() {
 		var email = $('#email'),
 			username = $('#username'),
 			password = $('#password'),
 			password_confirm = $('#password-confirm'),
-			register = $('#register'),
-			agreeTerms = $('#agree-terms');
+			register = $('#register');
 
 		handleLanguageOverride();
 
@@ -79,7 +78,7 @@ define('forum/register', ['csrf', 'translator'], function(csrf, translator) {
 
 				registerBtn.parents('form').ajaxSubmit({
 					headers: {
-						'x-csrf-token': csrf.get()
+						'x-csrf-token': config.csrf_token
 					},
 					success: function(data) {
 						registerBtn.removeClass('disabled');
@@ -99,26 +98,18 @@ define('forum/register', ['csrf', 'translator'], function(csrf, translator) {
 					},
 					error: function(data) {
 						translator.translate(data.responseText, config.defaultLang, function(translated) {
-							errorEl.find('p').text(translated);
-							errorEl.removeClass('hidden');
-							registerBtn.removeClass('disabled');
+							if (data.status === 403 && data.responseText === 'Forbidden') {
+								window.location.href = config.relative_path + '/register?error=csrf-invalid';
+							} else {
+								errorEl.find('p').text(translated);
+								errorEl.removeClass('hidden');
+								registerBtn.removeClass('disabled');
+							}
 						});
 					}
 				});
 			});
 		});
-
-		if (agreeTerms.length) {
-			agreeTerms.on('click', function() {
-				if ($(this).prop('checked')) {
-					register.removeAttr('disabled');
-				} else {
-					register.attr('disabled', 'disabled');
-				}
-			});
-
-			register.attr('disabled', 'disabled');
-		}
 	};
 
 	function validateEmail(email, callback) {
@@ -220,8 +211,8 @@ define('forum/register', ['csrf', 'translator'], function(csrf, translator) {
 		translator.translate(msg, function(msg) {
 			element.html(msg);
 			element.parent()
-				.removeClass('alert-success')
-				.addClass('alert-danger');
+				.removeClass('register-success')
+				.addClass('register-danger');
 			element.show();
 		});
 		validationError = true;
@@ -231,8 +222,8 @@ define('forum/register', ['csrf', 'translator'], function(csrf, translator) {
 		translator.translate(msg, function(msg) {
 			element.html(msg);
 			element.parent()
-				.removeClass('alert-danger')
-				.addClass('alert-success');
+				.removeClass('register-danger')
+				.addClass('register-success');
 			element.show();
 		});
 	}

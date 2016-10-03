@@ -8,6 +8,7 @@
 					<li><a href='{config.relative_path}/admin/manage/users/not-validated'>Not validated</a></li>
 					<li><a href='{config.relative_path}/admin/manage/users/no-posts'>No Posts</a></li>
 					<li><a href='{config.relative_path}/admin/manage/users/inactive'>Inactive</a></li>
+					<li><a href='{config.relative_path}/admin/manage/users/flagged'>Most Flags</a></li>
 					<li><a href='{config.relative_path}/admin/manage/users/banned'>Banned</a></li>
 					<li><a href='{config.relative_path}/admin/manage/users/search'>User Search</a></li>
 
@@ -22,12 +23,14 @@
 							<li><a href="#" class="send-validation-email"><i class="fa fa-fw fa-mail-forward"></i> Send Validation Email</a></li>
 							<li><a href="#" class="password-reset-email"><i class="fa fa-fw fa-key"></i> Send Password Reset Email</a></li>
 							<li class="divider"></li>
-							<li><a href="#" class="ban-user"><i class="fa fa-fw fa-gavel"></i> Ban User</a></li>
-							<li><a href="#" class="unban-user"><i class="fa fa-fw fa-comment-o"></i> Unban User</a></li>
+							<li><a href="#" class="ban-user"><i class="fa fa-fw fa-gavel"></i> Ban User(s)</a></li>
+							<li><a href="#" class="ban-user-temporary"><i class="fa fa-fw fa-clock-o"></i> Ban User(s) Temporarily</a></li>
+							<li><a href="#" class="unban-user"><i class="fa fa-fw fa-comment-o"></i> Unban User(s)</a></li>
 							<li><a href="#" class="reset-lockout"><i class="fa fa-fw fa-unlock"></i> Reset Lockout</a></li>
 							<li><a href="#" class="reset-flags"><i class="fa fa-fw fa-flag"></i> Reset Flags</a></li>
 							<li class="divider"></li>
-							<li><a href="#" class="delete-user"><i class="fa fa-fw fa-trash-o"></i> Delete User</a></li>
+							<li><a href="#" class="delete-user"><i class="fa fa-fw fa-trash-o"></i> Delete User(s)</a></li>
+							<li><a href="#" class="delete-user-and-content"><i class="fa fa-fw fa-trash-o"></i> Delete User(s) and Content</a></li>
 						</ul>
 					</div>
 				</ul>
@@ -59,9 +62,9 @@
 					<div class="users-box" data-uid="{users.uid}" data-username="{users.username}">
 						<div class="user-image">
 							<!-- IF users.picture -->
-							<img src="{users.picture}" class="img-thumbnail user-selectable"/>
+							<img src="{users.picture}" class="img-thumbnail"/>
 							<!-- ELSE -->
-							<div class="user-icon user-selectable" style="background-color: {users.icon:bgColor};">{users.icon:text}</div>
+							<div class="user-icon" style="background-color: {users.icon:bgColor};">{users.icon:text}</div>
 							<!-- ENDIF users.picture -->
 							<div class="labels">
 								<!-- IF config.requireEmailConfirmation -->
@@ -70,13 +73,13 @@
 								<!-- ENDIF !users.email:confirmed -->
 								<!-- ENDIF config.requireEmailConfirmation -->
 								<span class="administrator label label-primary <!-- IF !users.administrator -->hide<!-- ENDIF !users.administrator -->">Admin</span>
-								<span class="ban label label-danger <!-- IF !users.banned -->hide<!-- ENDIF !users.banned -->">Banned</span>
+								<span class="ban label label-danger <!-- IF !users.banned -->hide<!-- ENDIF !users.banned -->">Banned<!-- IF users.banned_until --> <i class="fa fa-clock-o" title="Banned until {../banned_until_readable}"></i><!-- ENDIF users.banned_until --></span>
 							</div>
 						</div>
 
 						<a href="{config.relative_path}/user/{users.userslug}" target="_blank">{users.username} ({users.uid})</a><br/>
 						<!-- IF users.email -->
-						<small><span title="{users.email}">{users.email}</span></small>
+						<small><span title="{users.email}">{users.email}</span></small><br/>
 						<!-- ENDIF users.email -->
 
 						joined <span class="timeago" title="{users.joindateISO}"></span><br/>
@@ -84,53 +87,13 @@
 						posts {users.postcount}
 
 						<!-- IF users.flags -->
-						<div><small><span><i class="fa fa-flag"></i> {users.flags}</span></small></div>
+						<div><small><span><i class="fa fa-flag"></i> <a href="{config.relative_path}/admin/manage/flags?byUsername={users.username}">{users.flags}</a></span></small></div>
 						<!-- ENDIF users.flags -->
 					</div>
 					<!-- END users -->
 				</ul>
 
 				<!-- IMPORT partials/paginator.tpl -->
-
-				<div class="modal fade" id="create-modal">
-					<div class="modal-dialog">
-						<div class="modal-content">
-							<div class="modal-header">
-								<button type="button" class="close" data-dismiss="modal" aria-hidden="true">&times;</button>
-								<h4 class="modal-title">Create User</h4>
-							</div>
-							<div class="modal-body">
-								<div class="alert alert-danger hide" id="create-modal-error"></div>
-								<form>
-									<div class="form-group">
-										<label for="group-name">User Name</label>
-										<input type="text" class="form-control" id="create-user-name" placeholder="User Name" />
-									</div>
-									<div class="form-group">
-										<label for="group-name">Email</label>
-										<input type="text" class="form-control" id="create-user-email" placeholder="Email of this user" />
-									</div>
-
-									<div class="form-group">
-										<label for="group-name">Password</label>
-										<input type="password" class="form-control" id="create-user-password" placeholder="Password" />
-									</div>
-
-									<div class="form-group">
-										<label for="group-name">Password Confirm</label>
-										<input type="password" class="form-control" id="create-user-password-again" placeholder="Password" />
-									</div>
-
-								</form>
-							</div>
-							<div class="modal-footer">
-								<button type="button" class="btn btn-default" data-dismiss="modal">Close</button>
-								<button type="button" class="btn btn-primary" id="create-modal-go">Create</button>
-							</div>
-						</div>
-					</div>
-				</div>
-
 			</div>
 		</div>
 	</div>
@@ -139,8 +102,15 @@
 		<div class="panel panel-default">
 			<div class="panel-heading">Users Control Panel</div>
 			<div class="panel-body">
-				<button id="createUser" class="btn btn-primary">New User</button>
-				<a target="_blank" href="{config.relative_path}/api/admin/users/csv" class="btn btn-primary">Download CSV</a>
+				<button id="createUser" class="btn btn-primary form-control">New User</button>
+				<a target="_blank" href="{config.relative_path}/api/admin/users/csv" class="btn btn-primary form-control">Download CSV</a>
+
+				<!-- IF inviteOnly -->
+				<!-- IF loggedIn -->
+				<button component="user/invite" class="btn btn-success form-control"><i class="fa fa-users"></i> Invite</button>
+				<!-- ENDIF loggedIn -->
+				<!-- ENDIF inviteOnly -->
+
 			</div>
 		</div>
 	</div>

@@ -15,10 +15,6 @@ app.cacheBuster = null;
 
 	app.cacheBuster = config['cache-buster'];
 
-	require(['csrf'], function(csrf) {
-		csrf.set(config.csrf_token);
-	});
-
 	bootbox.setDefaults({
 		locale: config.userLang
 	});
@@ -26,7 +22,9 @@ app.cacheBuster = null;
 	app.load = function() {
 		app.loadProgressiveStylesheet();
 
-		var url = ajaxify.start(window.location.pathname.slice(1) + window.location.search + window.location.hash, true);
+		var url = ajaxify.start(window.location.pathname.slice(1) + window.location.search + window.location.hash);
+		ajaxify.updateHistory(url, true);
+		ajaxify.parseData();
 		ajaxify.end(url, app.template);
 
 		handleStatusChange();
@@ -35,7 +33,7 @@ app.cacheBuster = null;
 			app.handleSearch();
 		}
 
-		$('#content').on('click', '#new_topic', function(){
+		$('body').on('click', '#new_topic', function(){
 			app.newTopic();
 		});
 
@@ -43,7 +41,7 @@ app.cacheBuster = null;
 			components.get('user/logout').on('click', app.logout);
 		});
 
-		Visibility.change(function(e, state){
+		Visibility.change(function(event, state){
 			if (state === 'visible') {
 				app.isFocused = true;
 				app.alternatingTitle('');
@@ -59,8 +57,8 @@ app.cacheBuster = null;
 
 		socket.removeAllListeners('event:nodebb.ready');
 		socket.on('event:nodebb.ready', function(data) {
-			if (!app.cacheBusters || app.cacheBusters['cache-buster'] !== data['cache-buster']) {
-				app.cacheBusters = data;
+			if (!app.cacheBuster || app.cacheBuster !== data['cache-buster']) {
+				app.cacheBuster = data['cache-buster'];
 
 				app.alert({
 					alert_id: 'forum_updated',
@@ -87,16 +85,20 @@ app.cacheBuster = null;
 	};
 
 	app.logout = function() {
-		require(['csrf'], function(csrf) {
-			$.ajax(config.relative_path + '/logout', {
-				type: 'POST',
-				headers: {
-					'x-csrf-token': csrf.get()
-				},
-				success: function() {
-					window.location.href = config.relative_path + '/';
-				}
-			});
+		$(window).trigger('action:app.logout');
+		$.ajax(config.relative_path + '/logout', {
+			type: 'POST',
+			headers: {
+				'x-csrf-token': config.csrf_token
+			},
+			success: function() {
+				var payload = {
+					next: config.relative_path + '/'
+				};
+
+				$(window).trigger('action:app.loggedOut', payload);
+				window.location.href = payload.next;
+			}
 		});
 	};
 
@@ -117,29 +119,58 @@ app.cacheBuster = null;
 			title: '[[global:alert.success]]',
 			message: message,
 			type: 'success',
-			timeout: timeout ? timeout : 2000
+			timeout: timeout ? timeout : 5000
 		});
 	};
 
 	app.alertError = function (message, timeout) {
+		if (message === '[[error:invalid-session]]') {
+			return app.handleInvalidSession();
+		}
+
 		app.alert({
 			title: '[[global:alert.error]]',
 			message: message,
 			type: 'danger',
-			timeout: timeout ? timeout : 5000
+			timeout: timeout ? timeout : 10000
+		});
+	};
+
+	app.handleInvalidSession = function() {
+		if (app.flags && app.flags._sessionRefresh) {
+			return;
+		}
+
+		app.flags = app.flags || {};
+		app.flags._sessionRefresh = true;
+
+		require(['translator'], function(translator) {
+			translator.translate('[[error:invalid-session-text]]', function(translated) {
+				bootbox.alert({
+					title: '[[error:invalid-session]]',
+					message: translated,
+					closeButton: false,
+					callback: function() {
+						window.location.reload();
+					}
+				});
+			});
 		});
 	};
 
 	app.enterRoom = function (room, callback) {
 		callback = callback || function() {};
 		if (socket && app.user.uid && app.currentRoom !== room) {
+			var previousRoom = app.currentRoom;
+			app.currentRoom = room;
 			socket.emit('meta.rooms.enter', {
 				enter: room
 			}, function(err) {
 				if (err) {
+					app.currentRoom = previousRoom;
 					return app.alertError(err.message);
 				}
-				app.currentRoom = room;
+
 				callback();
 			});
 		}
@@ -165,12 +196,12 @@ app.cacheBuster = null;
 		}
 	}
 
-	app.createUserTooltips = function(els) {
+	app.createUserTooltips = function(els, placement) {
 		els = els || $('body');
 		els.find('.avatar,img[title].teaser-pic,img[title].user-img,div.user-icon,span.user-icon').each(function() {
 			if (!utils.isTouchDevice()) {
 				$(this).tooltip({
-					placement: 'top',
+					placement: placement || $(this).attr('title-placement') || 'top',
 					title: $(this).attr('title')
 				});
 			}
@@ -263,7 +294,8 @@ app.cacheBuster = null;
 		});
 	};
 
-	app.newChat = function (touid) {
+	app.newChat = function (touid, callback) {
+		callback = callback || function() {};
 		if (!app.user.uid) {
 			return app.alertError('[[error:not-logged-in]]');
 		}
@@ -272,11 +304,14 @@ app.cacheBuster = null;
 			if (err) {
 				return app.alertError(err.message);
 			}
+
 			if (!ajaxify.currentPage.startsWith('chats')) {
 				app.openChat(roomId);
 			} else {
 				ajaxify.go('chats/' + roomId);
 			}
+
+			callback(false, roomId);
 		});
 	};
 
@@ -353,6 +388,7 @@ app.cacheBuster = null;
 			if (!utils.isTouchDevice()) {
 				$(this).tooltip({
 					placement: 'bottom',
+					trigger: 'hover',
 					title: $(this).attr('title')
 				});
 			}
@@ -361,6 +397,7 @@ app.cacheBuster = null;
 		if (!utils.isTouchDevice()) {
 			$('#search-form').parent().tooltip({
 				placement: 'bottom',
+				trigger: 'hover',
 				title: $('#search-button i').attr('title')
 			});
 		}
@@ -368,6 +405,7 @@ app.cacheBuster = null;
 		if (!utils.isTouchDevice()) {
 			$('#user_dropdown').tooltip({
 				placement: 'bottom',
+				trigger: 'hover',
 				title: $('#user_dropdown').attr('title')
 			});
 		}
@@ -408,7 +446,9 @@ app.cacheBuster = null;
 		$('#search-form').on('submit', function () {
 			var input = $(this).find('input');
 			require(['search'], function(search) {
-				search.query({term: input.val()}, function() {
+				var data = search.getSearchPreferences();
+				data.term = input.val();
+				search.query(data, function() {
 					input.val('');
 				});
 			});
@@ -454,27 +494,11 @@ app.cacheBuster = null;
 		});
 	};
 
-	app.newTopic = function (cid) {
-		cid = cid || ajaxify.data.cid;
-		if (cid) {
-			$(window).trigger('action:composer.topic.new', {
-				cid: cid
-			});
-		} else {
-			socket.emit('categories.getCategoriesByPrivilege', 'topics:create', function(err, categories) {
-				if (err) {
-					return app.alertError(err.message);
-				}
-				categories = categories.filter(function(category) {
-					return !category.link && !parseInt(category.parentCid, 10);
-				});
-				if (categories.length) {
-					$(window).trigger('action:composer.topic.new', {
-						cid: categories[0].cid
-					});
-				}
-			});
-		}
+	app.newTopic = function (cid, tags) {
+		$(window).trigger('action:composer.topic.new', {
+			cid: cid || ajaxify.data.cid || 0,
+			tags: tags || (ajaxify.data.tag ? [ajaxify.data.tag] : [])
+		});
 	};
 
 	app.loadJQueryUI = function(callback) {
@@ -482,59 +506,67 @@ app.cacheBuster = null;
 			return callback();
 		}
 
-		$.getScript(config.relative_path + '/vendor/jquery/js/jquery-ui-1.10.4.custom.js', callback);
+		var scriptEl = document.createElement('script');
+		scriptEl.type = 'text/javascript';
+		scriptEl.src = config.relative_path + '/vendor/jquery/js/jquery-ui.js' + (app.cacheBuster ? '?v=' + app.cacheBuster : '');
+		scriptEl.onload = callback;
+		document.head.appendChild(scriptEl);
 	};
 
 	app.showEmailConfirmWarning = function(err) {
 		if (!config.requireEmailConfirmation || !app.user.uid) {
 			return;
 		}
+		var msg = {
+			alert_id: 'email_confirm',
+			type: 'warning',
+			timeout: 0
+		};
+
 		if (!app.user.email) {
-			app.alert({
-				alert_id: 'email_confirm',
-				message: '[[error:no-email-to-confirm]]',
-				type: 'warning',
-				timeout: 0,
-				clickfn: function() {
-					app.removeAlert('email_confirm');
-					ajaxify.go('user/' + app.user.userslug + '/edit');
-				}
-			});
-		} else if (!app.user['email:confirmed']) {
-			app.alert({
-				alert_id: 'email_confirm',
-				message: err ? err.message : '[[error:email-not-confirmed]]',
-				type: 'warning',
-				timeout: 0,
-				clickfn: function() {
-					app.removeAlert('email_confirm');
-					socket.emit('user.emailConfirm', {}, function(err) {
-						if (err) {
-							return app.alertError(err.message);
-						}
-						app.alertSuccess('[[notifications:email-confirm-sent]]');
-					});
-				}
-			});
+			msg.message = '[[error:no-email-to-confirm]]';
+			msg.clickfn = function() {
+				app.removeAlert('email_confirm');
+				ajaxify.go('user/' + app.user.userslug + '/edit');
+			};
+			app.alert(msg);
+		} else if (!app.user['email:confirmed'] && !app.user.isEmailConfirmSent) {
+			msg.message = err ? err.message : '[[error:email-not-confirmed]]';
+			msg.clickfn = function() {
+				app.removeAlert('email_confirm');
+				socket.emit('user.emailConfirm', {}, function(err) {
+					if (err) {
+						return app.alertError(err.message);
+					}
+					app.alertSuccess('[[notifications:email-confirm-sent]]');
+				});
+			};
+
+			app.alert(msg);
+		} else if (!app.user['email:confirmed'] && app.user.isEmailConfirmSent) {
+			msg.message = '[[error:email-not-confirmed-email-sent]]';
+			app.alert(msg);
 		}
 	};
 
 	app.parseAndTranslate = function(template, blockName, data, callback) {
 		require(['translator'], function(translator) {
+			function translate(html, callback) {
+				translator.translate(html, function(translatedHTML) {
+					translatedHTML = translator.unescape(translatedHTML);
+					callback($(translatedHTML));
+				});
+			}
+
 			if (typeof blockName === 'string') {
 				templates.parse(template, blockName, data, function(html) {
-					translator.translate(html, function(translatedHTML) {
-						translatedHTML = translator.unescape(translatedHTML);
-						callback($(translatedHTML));
-					});
+					translate(html, callback);
 				});
 			} else {
-				callback = data, data = blockName;
+				callback = data;
+				data = blockName;
 				templates.parse(template, data, function(html) {
-					translator.translate(html, function(translatedHTML) {
-						translatedHTML = translator.unescape(translatedHTML);
-						callback($(translatedHTML));
-					});
+					translate(html, callback);
 				});
 			}
 		});
@@ -546,5 +578,5 @@ app.cacheBuster = null;
 		linkEl.href = config.relative_path + '/js-enabled.css';
 
 		document.head.appendChild(linkEl);
-	}
+	};
 }());

@@ -2,7 +2,9 @@
 
 var async = require('async');
 var nconf = require('nconf');
+var validator = require('validator');
 
+var db = require('../database');
 var user = require('../user');
 var meta = require('../meta');
 var plugins = require('../plugins');
@@ -14,7 +16,7 @@ var controllers = {
 	helpers: require('../controllers/helpers')
 };
 
-module.exports = function(app, middleware) {
+module.exports = function(middleware) {
 
 	middleware.buildHeader = function(req, res, next) {
 		res.locals.renderHeader = true;
@@ -26,7 +28,10 @@ module.exports = function(app, middleware) {
 					controllers.api.getConfig(req, res, next);
 				},
 				footer: function(next) {
-					app.render('footer', {loggedIn: (req.user ? parseInt(req.user.uid, 10) !== 0 : false)}, next);
+					req.app.render('footer', {
+						loggedIn: !!req.uid,
+						title: validator.escape(String(meta.config.title || meta.config.browserTitle || 'NodeBB'))
+					}, next);
 				},
 				plugins: function(next) {
 					plugins.fireHook('filter:middleware.buildHeader', {req: req, locals: res.locals}, next);
@@ -57,7 +62,7 @@ module.exports = function(app, middleware) {
 			'brand:logo:url': meta.config['brand:logo:url'] || '',
 			'brand:logo:alt': meta.config['brand:logo:alt'] || '',
 			'brand:logo:display': meta.config['brand:logo']?'':'hide',
-			allowRegistration: registrationType === 'normal' || registrationType === 'admin-approval',
+			allowRegistration: registrationType === 'normal' || registrationType === 'admin-approval' || registrationType === 'admin-approval-ip',
 			searchEnabled: plugins.hasListeners('filter:search.query'),
 			config: res.locals.config,
 			relative_path: nconf.get('relative_path'),
@@ -77,18 +82,28 @@ module.exports = function(app, middleware) {
 				user.isGlobalModerator(req.uid, next);
 			},
 			user: function(next) {
+				var userData = {
+					uid: 0,
+					username: '[[global:guest]]',
+					userslug: '',
+					email: '',
+					picture: meta.config.defaultAvatar,
+					status: 'offline',
+					banned: false,
+					reputation: 0,
+					'email:confirmed': false
+				};
 				if (req.uid) {
-					user.getUserFields(req.uid, ['username', 'userslug', 'email', 'picture', 'status', 'email:confirmed', 'banned'], next);
+					user.getUserFields(req.uid, Object.keys(userData), next);
 				} else {
-					next(null, {
-						username: '[[global:guest]]',
-						userslug: '',
-						picture: meta.config.defaultAvatar,
-						status: 'offline',
-						banned: false,
-						uid: 0
-					});
+					next(null, userData);
 				}
+			},
+			isEmailConfirmSent: function(next) {
+				if (!meta.config.requireEmailConfirmation || !req.uid) {
+					return next(null, false);
+				}
+				db.get('uid:' + req.uid + ':confirm:email:sent', next);
 			},
 			navigation: async.apply(navigation.get),
 			tags: async.apply(meta.tags.parse, res.locals.metaTags, res.locals.linkTags)
@@ -105,7 +120,9 @@ module.exports = function(app, middleware) {
 			results.user.isAdmin = results.isAdmin;
 			results.user.isGlobalMod = results.isGlobalMod;
 			results.user.uid = parseInt(results.user.uid, 10);
+			results.user.email = String(results.user.email).replace(/\\/g, '\\\\').replace(/"/g, '\\"');
 			results.user['email:confirmed'] = parseInt(results.user['email:confirmed'], 10) === 1;
+			results.user.isEmailConfirmSent = !!results.isEmailConfirmSent;
 
 			if (parseInt(meta.config.disableCustomUserSkins, 10) !== 1 && res.locals.config.bootswatchSkin !== 'default') {
 				templateValues.bootswatchCSS = '//maxcdn.bootstrapcdn.com/bootswatch/latest/' + res.locals.config.bootswatchSkin + '/bootstrap.min.css';
@@ -144,7 +161,7 @@ module.exports = function(app, middleware) {
 					return callback(err);
 				}
 
-				app.render('header', data.templateValues, callback);
+				req.app.render('header', data.templateValues, callback);
 			});
 		});
 	};

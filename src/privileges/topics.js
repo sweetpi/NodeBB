@@ -2,7 +2,9 @@
 'use strict';
 
 var async = require('async');
+var _ = require('underscore');
 
+var meta = require('../meta');
 var topics = require('../topics');
 var user = require('../user');
 var helpers = require('./helpers');
@@ -15,16 +17,13 @@ module.exports = function(privileges) {
 
 	privileges.topics.get = function(tid, uid, callback) {
 		var topic;
+		var privs = ['topics:reply', 'topics:read', 'topics:delete', 'posts:edit', 'posts:delete', 'read'];
 		async.waterfall([
-			async.apply(topics.getTopicFields, tid, ['cid', 'uid', 'locked']),
+			async.apply(topics.getTopicFields, tid, ['cid', 'uid', 'locked', 'deleted']),
 			function(_topic, next) {
 				topic = _topic;
 				async.parallel({
-					'topics:reply': async.apply(helpers.isUserAllowedTo, 'topics:reply', uid, [topic.cid]),
-					read: async.apply(helpers.isUserAllowedTo, 'read', uid, [topic.cid]),
-					isOwner: function(next) {
-						next(null, parseInt(uid, 10) === parseInt(topic.uid, 10));
-					},
+					privileges: async.apply(helpers.isUserAllowedTo, privs, uid, topic.cid),
 					isAdministrator: async.apply(user.isAdministrator, uid),
 					isModerator: async.apply(user.isModerator, uid, topic.cid),
 					disabled: async.apply(categories.getCategoryField, topic.cid, 'disabled')
@@ -35,19 +34,26 @@ module.exports = function(privileges) {
 				return callback(err);
 			}
 
+			var privData = _.object(privs, results.privileges);
 			var disabled = parseInt(results.disabled, 10) === 1;
 			var locked = parseInt(topic.locked, 10) === 1;
+			var deleted = parseInt(topic.deleted, 10) === 1;
+			var isOwner = !!parseInt(uid, 10) && parseInt(uid, 10) === parseInt(topic.uid, 10);
 			var isAdminOrMod = results.isAdministrator || results.isModerator;
 			var editable = isAdminOrMod;
-			var deletable = isAdminOrMod || results.isOwner;
+			var deletable = isAdminOrMod || (isOwner && privData['topics:delete']);
 
 			plugins.fireHook('filter:privileges.topics.get', {
-				'topics:reply': (results['topics:reply'][0] && !locked) || isAdminOrMod,
-				read: results.read[0] || isAdminOrMod,
+				'topics:reply': (privData['topics:reply'] && !locked && !deleted) || isAdminOrMod,
+				'topics:read': privData['topics:read'] || isAdminOrMod,
+				'topics:delete': (isOwner && privData['topics:delete']) || isAdminOrMod,
+				'posts:edit': (privData['posts:edit'] && !locked) || isAdminOrMod,
+				'posts:delete': (privData['posts:delete'] && !locked) || isAdminOrMod,
+				read: privData.read || isAdminOrMod,
 				view_thread_tools: editable || deletable,
 				editable: editable,
 				deletable: deletable,
-				view_deleted: isAdminOrMod || results.isOwner,
+				view_deleted: isAdminOrMod || isOwner,
 				isAdminOrMod: isAdminOrMod,
 				disabled: disabled,
 				tid: tid,
@@ -70,56 +76,44 @@ module.exports = function(privileges) {
 		if (!Array.isArray(tids) || !tids.length) {
 			return callback(null, []);
 		}
-
+		var cids;
+		var topicsData;
 		async.waterfall([
 			function(next) {
 				topics.getTopicsFields(tids, ['tid', 'cid', 'deleted'], next);
 			},
-			function(topicsData, next) {
-				var cids = topicsData.map(function(topic) {
+			function(_topicsData, next) {
+				topicsData = _topicsData;
+				cids = topicsData.map(function(topic) {
 					return topic.cid;
 				}).filter(function(cid, index, array) {
 					return cid && array.indexOf(cid) === index;
 				});
 
-				async.parallel({
-					categories: function(next) {
-						categories.getCategoriesFields(cids, ['disabled'], next);
-					},
-					allowedTo: function(next) {
-						helpers.isUserAllowedTo(privilege, uid, cids, next);
-					},
-					isModerators: function(next) {
-						user.isModerator(uid, cids, next);
-					},
-					isAdmin: function(next) {
-						user.isAdministrator(uid, next);
-					}
-				}, function(err, results) {
-					if (err) {
-						return next(err);
-					}
-					var isModOf = {};
-					cids = cids.filter(function(cid, index) {
-						isModOf[cid] = results.isModerators[index];
-						return !results.categories[index].disabled &&
-							(results.allowedTo[index] || results.isAdmin || results.isModerators[index]);
-					});
+				privileges.categories.getBase(privilege, cids, uid, next);
+			},
+			function(results, next) {
 
-					tids = topicsData.filter(function(topic) {
-						return cids.indexOf(topic.cid) !== -1 &&
-							(parseInt(topic.deleted, 10) !== 1 || results.isAdmin || isModOf[topic.cid]);
-					}).map(function(topic) {
-						return topic.tid;
-					});
+				var isModOf = {};
+				cids = cids.filter(function(cid, index) {
+					isModOf[cid] = results.isModerators[index];
+					return !results.categories[index].disabled &&
+						(results.allowedTo[index] || results.isAdmin || results.isModerators[index]);
+				});
 
-					plugins.fireHook('filter:privileges.topics.filter', {
-						privilege: privilege,
-						uid: uid,
-						tids: tids
-					}, function(err, data) {
-						next(err, data ? data.tids : null);
-					});
+				tids = topicsData.filter(function(topic) {
+					return cids.indexOf(topic.cid) !== -1 &&
+						(parseInt(topic.deleted, 10) !== 1 || results.isAdmin || isModOf[topic.cid]);
+				}).map(function(topic) {
+					return topic.tid;
+				});
+
+				plugins.fireHook('filter:privileges.topics.filter', {
+					privilege: privilege,
+					uid: uid,
+					tids: tids
+				}, function(err, data) {
+					next(err, data ? data.tids : null);
 				});
 			}
 		], callback);
@@ -184,6 +178,46 @@ module.exports = function(privileges) {
 				next(null, results.isAdminOrMod || (results.purge && results.owner));
 			}
 		], callback);
+	};
+
+	privileges.topics.canDelete = function(tid, uid, callback) {
+		var topicData;
+		async.waterfall([
+			function(next) {
+				topics.getTopicFields(tid, ['cid', 'postcount'], next);
+			},
+			function(_topicData, next) {
+				topicData = _topicData;
+				async.parallel({
+					isModerator: async.apply(user.isModerator, uid, topicData.cid),
+					isAdministrator: async.apply(user.isAdministrator, uid),
+					isOwner: async.apply(topics.isOwner, tid, uid),
+					'topics:delete': async.apply(helpers.isUserAllowedTo, 'topics:delete', uid, [topicData.cid])
+				}, next);
+			}
+		], function(err, results) {
+			if (err) {
+				return callback(err);
+			}
+
+			if (results.isModerator || results.isAdministrator) {
+				return callback(null, true);
+			}
+
+			var preventTopicDeleteAfterReplies = parseInt(meta.config.preventTopicDeleteAfterReplies, 10) || 0;
+			if (preventTopicDeleteAfterReplies && (topicData.postcount - 1) >= preventTopicDeleteAfterReplies) {
+				var langKey = preventTopicDeleteAfterReplies > 1 ?
+					'[[error:cant-delete-topic-has-replies, ' + meta.config.preventTopicDeleteAfterReplies + ']]':
+					'[[error:cant-delete-topic-has-reply]]';
+				return callback(new Error(langKey));
+			}
+
+			if (!results['topics:delete'][0]) {
+				return callback(null, false);
+			}
+
+			callback(null, results.isOwner);
+		});
 	};
 
 	privileges.topics.canEdit = function(tid, uid, callback) {

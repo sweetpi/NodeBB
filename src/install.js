@@ -43,8 +43,8 @@ questions.optional = [
 ];
 
 function checkSetupFlag(next) {
-	var	envSetupKeys = ['database'],
-		setupVal;
+	var setupVal;
+
 	try {
 		if (nconf.get('setup')) {
 			setupVal = JSON.parse(nconf.get('setup'));
@@ -74,14 +74,10 @@ function checkSetupFlag(next) {
 
 			process.exit();
 		}
-	} else if (envSetupKeys.every(function(key) {
-		return nconf.stores.env.store.hasOwnProperty(key);
-	})) {
-		install.values = envSetupKeys.reduce(function(config, key) {
-			config[key] = nconf.stores.env.store[key];
-			return config;
-		}, {});
-
+	} else if (nconf.get('database')) {
+		install.values = {
+			database: nconf.get('database')
+		};
 		next();
 	} else {
 		next();
@@ -183,12 +179,10 @@ function completeConfigSetup(err, config, next) {
 
 function setupDefaultConfigs(next) {
 	process.stdout.write('Populating database with default configs, if not already set...\n');
-	var meta = require('./meta'),
-		defaults = require(path.join(__dirname, '../', 'install/data/defaults.json'));
+	var meta = require('./meta');
+	var defaults = require(path.join(__dirname, '../', 'install/data/defaults.json'));
 
-	async.each(Object.keys(defaults), function (key, next) {
-		meta.configs.setOnEmpty(key, defaults[key], next);
-	}, function (err) {
+	meta.configs.setOnEmpty(defaults, function (err) {
 		if (err) {
 			return next(err);
 		}
@@ -261,6 +255,9 @@ function createAdmin(callback) {
 			type: 'string'
 		}],
 		success = function(err, results) {
+			if (err) {
+				return callback(err);
+			}
 			if (!results) {
 				return callback(new Error('aborted'));
 			}

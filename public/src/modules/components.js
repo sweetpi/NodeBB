@@ -3,6 +3,16 @@ define('components', function() {
 	var components = {};
 
 	components.core = {
+		'topic/teaser': function(tid) {
+			if (tid) {
+				return $('[component="category/topic"][data-tid="' + tid + '"] [component="topic/teaser"]');
+			} else {
+				return $('[component="topic/teaser"]');
+			}
+		},
+		'topic': function(name, value) {
+			return $('[component="topic"][data-' + name + '="' + value + '"]');
+		},
 		'post': function(name, value) {
 			return $('[component="post"][data-' + name + '="' + value + '"]');
 		},

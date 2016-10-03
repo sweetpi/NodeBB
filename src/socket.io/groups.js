@@ -5,6 +5,7 @@ var	async = require('async'),
 	groups = require('../groups'),
 	meta = require('../meta'),
 	user = require('../user'),
+	utils = require('../../public/src/utils'),
 	groupsController = require('../controllers/groups'),
 
 	SocketGroups = {};
@@ -134,6 +135,28 @@ SocketGroups.issueInvite = isOwner(function(socket, data, callback) {
 	groups.invite(data.groupName, data.toUid, callback);
 });
 
+SocketGroups.issueMassInvite = isOwner(function(socket, data, callback) {
+	if (!data || !data.usernames || !data.groupName) {
+		return callback(new Error('[[error:invalid-data]]'));
+	}
+	var usernames = data.usernames.split(',');
+	usernames = usernames.map(function(username) {
+		return username && username.trim();
+	});
+	user.getUidsByUsernames(usernames, function(err, uids) {
+		if (err) {
+			return callback(err);
+		}
+		uids = uids.filter(function(uid) {
+			return !!uid && parseInt(uid, 10);
+		});
+
+		async.eachSeries(uids, function(uid, next) {
+			groups.invite(data.groupName, uid, next);
+		}, callback);
+	});
+});
+
 SocketGroups.rescindInvite = isOwner(function(socket, data, callback) {
 	groups.rejectMembership(data.groupName, data.toUid, callback);
 });
@@ -170,6 +193,8 @@ SocketGroups.create = function(socket, data, callback) {
 		return callback(new Error('[[error:no-privileges]]'));
 	} else if (parseInt(meta.config.allowGroupCreation, 10) !== 1) {
 		return callback(new Error('[[error:group-creation-disabled]]'));
+	} else if (groups.isPrivilegeGroup(data.name)) {
+		return callback(new Error('[[error:invalid-group-name]]'));
 	}
 
 
@@ -214,12 +239,12 @@ SocketGroups.search = function(socket, data, callback) {
 };
 
 SocketGroups.loadMore = function(socket, data, callback) {
-	if (!data.sort || !data.after) {
+	if (!data.sort  || !utils.isNumber(data.after) || parseInt(data.after, 10) < 0) {
 		return callback();
 	}
 
 	var groupsPerPage = 9;
-	var start = parseInt(data.after);
+	var start = parseInt(data.after, 10);
 	var stop = start + groupsPerPage - 1;
 	groupsController.getGroupsFromSet(socket.uid, data.sort, start, stop, callback);
 };
@@ -230,7 +255,7 @@ SocketGroups.searchMembers = function(socket, data, callback) {
 };
 
 SocketGroups.loadMoreMembers = function(socket, data, callback) {
-	if (!data.groupName || !parseInt(data.after, 10)) {
+	if (!data.groupName || !utils.isNumber(data.after) || parseInt(data.after, 10) < 0) {
 		return callback(new Error('[[error:invalid-data]]'));
 	}
 	data.after = parseInt(data.after, 10);

@@ -14,7 +14,6 @@ var social = require('./social');
 
 (function(Topics) {
 
-
 	require('./topics/data')(Topics);
 	require('./topics/create')(Topics);
 	require('./topics/delete')(Topics);
@@ -29,6 +28,7 @@ var social = require('./social');
 	require('./topics/teaser')(Topics);
 	require('./topics/suggested')(Topics);
 	require('./topics/tools')(Topics);
+	require('./topics/thumb')(Topics);
 
 	Topics.exists = function(tid, callback) {
 		db.isSortedSetMember('topics:tid', tid, callback);
@@ -131,6 +131,9 @@ var social = require('./social');
 					hasRead: function(next) {
 						Topics.hasReadTopics(tids, uid, next);
 					},
+					isIgnored: function(next) {
+						Topics.isIgnoring(tids, uid, next);
+					},
 					bookmarks: function(next) {
 						Topics.getUserBookmarks(tids, uid, next);
 					},
@@ -162,9 +165,12 @@ var social = require('./social');
 						topics[i].pinned = parseInt(topics[i].pinned, 10) === 1;
 						topics[i].locked = parseInt(topics[i].locked, 10) === 1;
 						topics[i].deleted = parseInt(topics[i].deleted, 10) === 1;
-						topics[i].unread = !results.hasRead[i];
+						topics[i].ignored = results.isIgnored[i];
+						topics[i].unread = !results.hasRead[i] && !results.isIgnored[i];
 						topics[i].bookmark = results.bookmarks[i];
 						topics[i].unreplied = !topics[i].teaser;
+
+						topics[i].icons = [];
 					}
 				}
 
@@ -187,30 +193,41 @@ var social = require('./social');
 					posts: async.apply(getMainPostAndReplies, topicData, set, uid, start, stop, reverse),
 					category: async.apply(Topics.getCategoryData, topicData.tid),
 					threadTools: async.apply(plugins.fireHook, 'filter:topic.thread_tools', {topic: topicData, uid: uid, tools: []}),
-					tags: async.apply(Topics.getTopicTagsObjects, topicData.tid),
 					isFollowing: async.apply(Topics.isFollowing, [topicData.tid], uid),
+					isIgnoring: async.apply(Topics.isIgnoring, [topicData.tid], uid),
 					bookmark: async.apply(Topics.getUserBookmark, topicData.tid, uid),
-					postSharing: async.apply(social.getActivePostSharing)
+					postSharing: async.apply(social.getActivePostSharing),
+					related: function(next) {
+						async.waterfall([
+							function(next) {
+								Topics.getTopicTagsObjects(topicData.tid, next);
+							},
+							function(tags, next) {
+								topicData.tags = tags;
+								Topics.getRelatedTopics(topicData, uid, next);
+							}
+						], next);
+					}
 				}, next);
 			},
 			function (results, next) {
 				topicData.posts = results.posts;
 				topicData.category = results.category;
 				topicData.thread_tools = results.threadTools.tools;
-				topicData.tags = results.tags;
 				topicData.isFollowing = results.isFollowing[0];
+				topicData.isNotFollowing = !results.isFollowing[0] && !results.isIgnoring[0];
+				topicData.isIgnoring = results.isIgnoring[0];
 				topicData.bookmark = results.bookmark;
 				topicData.postSharing = results.postSharing;
+				topicData.related = results.related || [];
 
 				topicData.unreplied = parseInt(topicData.postcount, 10) === 1;
 				topicData.deleted = parseInt(topicData.deleted, 10) === 1;
 				topicData.locked = parseInt(topicData.locked, 10) === 1;
 				topicData.pinned = parseInt(topicData.pinned, 10) === 1;
 
-				Topics.getRelatedTopics(topicData, uid, next);
-			},
-			function (related, next) {
-				topicData.related = related || [];
+				topicData.icons = [];
+
 				plugins.fireHook('filter:topic.get', {topic: topicData, uid: uid}, next);
 			},
 			function (data, next) {
@@ -333,4 +350,79 @@ var social = require('./social');
 		}
 	};
 
+	Topics.getTopicBookmarks = function( tid, callback ){
+		db.getSortedSetRangeWithScores(['tid:' + tid + ':bookmarks'], 0, -1, callback);
+	};
+
+	Topics.updateTopicBookmarks = function(tid, pids, callback) {
+		var maxIndex;
+
+		async.waterfall([
+			function(next) {
+				Topics.getPostCount(tid, next);
+			},
+			function(postcount, next) {
+				maxIndex = postcount;
+				Topics.getTopicBookmarks(tid, next);
+			},
+			function(bookmarks, next) {
+				var forkedPosts = pids.map(function(pid) {
+					return {pid: pid, tid: tid};
+				});
+
+				var uidData = bookmarks.map(function(bookmark) {
+					return {
+						uid: bookmark.value,
+						bookmark: bookmark.score
+					};
+				});
+
+				async.map(uidData, function(data, mapCallback) {
+					posts.getPostIndices(forkedPosts, data.uid, function(err, indices) {
+						if (err) {
+							return callback(err);
+						}
+						data.postIndices = indices;
+						mapCallback(null, data);
+					});
+				}, function(err, results) {
+					if (err) {
+						return callback(err);
+					}
+					async.map(results, function(data, mapCallback) {
+						var uid = data.uid;
+						var bookmark = data.bookmark;
+						bookmark = bookmark < maxIndex ? bookmark : maxIndex;
+						var postIndices = data.postIndices;
+
+						for (var i = 0; i < postIndices.length && postIndices[i] < data.bookmark; ++i ){
+							--bookmark;
+						}
+
+						if (parseInt(bookmark, 10) !== parseInt(data.bookmark, 10)) {
+							mapCallback( null, { uid: uid, bookmark: bookmark } );
+						} else {
+							mapCallback( null, null );
+						}
+					}, function(err, results) {
+						if (err) {
+							return callback(err);
+						}
+
+						async.map(results, function(ui, cb) {
+							if( ui && ui.bookmark) {
+								Topics.setUserBookmark(tid, ui.uid, ui.bookmark, cb);
+							} else {
+								return cb(null, null);
+							}
+						}, function(err) {
+							next(err);
+						});
+					});
+				});
+			}
+		], function(err){
+			callback(err);
+		});
+	};
 }(exports));
