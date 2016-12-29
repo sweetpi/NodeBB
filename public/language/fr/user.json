@@ -23,7 +23,7 @@
     "profile": "Profil",
     "profile_views": "Vues",
     "reputation": "Réputation",
-    "favourites": "Marque-pages",
+    "bookmarks": "Marque-pages",
     "watched": "Abonnements",
     "followers": "Abonnés",
     "following": "Abonnements",
@@ -31,7 +31,8 @@
     "signature": "Signature",
     "birthday": "Anniversaire",
     "chat": "Discussion",
-    "chat_with": "Discussion avec %1",
+    "chat_with": "Continuer la discussion avec %1",
+    "new_chat_with": "Commencer une nouvelle discussion avec %1",
     "follow": "S'abonner",
     "unfollow": "Se désabonner",
     "more": "Plus",
@@ -123,5 +124,7 @@
     "info.banned-reason-label": "Raison",
     "info.banned-no-reason": "Aucune raison donnée",
     "info.username-history": "Historique des noms d'utilisateur",
-    "info.email-history": "Historique des adresses email"
+    "info.email-history": "Historique des adresses email",
+    "info.moderation-note": "Note de modération",
+    "info.moderation-note.success": "Note de modération enregistrée"
 }

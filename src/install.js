@@ -1,16 +1,15 @@
 'use strict';
 
-var async = require('async'),
-	fs = require('fs'),
-	path = require('path'),
-	prompt = require('prompt'),
-	winston = require('winston'),
-	nconf = require('nconf'),
-	utils = require('../public/src/utils.js');
+var async = require('async');
+var fs = require('fs');
+var path = require('path');
+var prompt = require('prompt');
+var winston = require('winston');
+var nconf = require('nconf');
+var utils = require('../public/src/utils.js');
 
-
-var install = {},
-	questions = {};
+var install = {};
+var questions = {};
 
 questions.main = [
 	{
@@ -124,40 +123,33 @@ function setupConfig(next) {
 	prompt.delimiter = '';
 	prompt.colors = false;
 
-	if (!install.values) {
-		prompt.get(questions.main, function(err, config) {
-			if (err) {
-				process.stdout.write('\n\n');
-				winston.warn('NodeBB setup ' + err.message);
-				process.exit();
+	async.waterfall([
+		function (next) {
+			if (install.values) {
+				// Use provided values, fall back to defaults
+				var config = {};
+				var redisQuestions = require('./database/redis').questions;
+				var mongoQuestions = require('./database/mongo').questions;
+				var allQuestions = questions.main.concat(questions.optional).concat(redisQuestions).concat(mongoQuestions);
+
+				allQuestions.forEach(function (question) {
+					config[question.name] = install.values[question.name] || question['default'] || undefined;
+				});
+				setImmediate(next, null, config);
+			} else {
+				prompt.get(questions.main, next);
 			}
-
-			configureDatabases(config, function(err, config) {
-				completeConfigSetup(err, config, next);
-			});
-		});
-	} else {
-		// Use provided values, fall back to defaults
-		var	config = {},
-			redisQuestions = require('./database/redis').questions,
-			mongoQuestions = require('./database/mongo').questions,
-			allQuestions = questions.main.concat(questions.optional).concat(redisQuestions).concat(mongoQuestions);
-
-		allQuestions.forEach(function (question) {
-			config[question.name] = install.values[question.name] || question['default'] || undefined;
-		});
-
-		configureDatabases(config, function(err, config) {
-			completeConfigSetup(err, config, next);
-		});
-	}
+		},
+		function (config, next) {
+			configureDatabases(config, next);
+		},
+		function (config, next) {
+			completeConfigSetup(config, next);
+		}
+	], next);
 }
 
-function completeConfigSetup(err, config, next) {
-	if (err) {
-		return next(err);
-	}
-
+function completeConfigSetup(config, next) {
 	// Add CI object
 	if (install.ciVals) {
 		config.test_database = {};
@@ -168,13 +160,17 @@ function completeConfigSetup(err, config, next) {
 		}
 	}
 
-	install.save(config, function(err) {
-		if (err) {
-			return next(err);
+	async.waterfall([
+		function (next) {
+			install.save(config, next);
+		},
+		function (next) {
+			require('./database').init(next);
+		},
+		function (next) {
+			require('./database').createIndices(next);
 		}
-
-		require('./database').init(next);
-	});
+	], next);
 }
 
 function setupDefaultConfigs(next) {
@@ -194,7 +190,7 @@ function setupDefaultConfigs(next) {
 function enableDefaultTheme(next) {
 	var	meta = require('./meta');
 
-	meta.configs.get('theme:id', function(err, id) {
+	meta.configs.get('theme:id', function (err, id) {
 		if (err || id) {
 			process.stdout.write('Previous theme detected, skipping enabling default theme\n');
 			return next(err);
@@ -224,9 +220,10 @@ function createAdministrator(next) {
 }
 
 function createAdmin(callback) {
-	var User = require('./user'),
-		Groups = require('./groups'),
-		password;
+	var User = require('./user');
+	var Groups = require('./groups');
+	var password;
+	var meta = require('./meta');
 
 	winston.warn('No administrators have been detected, running initial user setup\n');
 
@@ -254,7 +251,7 @@ function createAdmin(callback) {
 			hidden: true,
 			type: 'string'
 		}],
-		success = function(err, results) {
+		success = function (err, results) {
 			if (err) {
 				return callback(err);
 			}
@@ -266,22 +263,28 @@ function createAdmin(callback) {
 				winston.warn("Passwords did not match, please try again");
 				return retryPassword(results);
 			}
+			
+			if (results.password.length < meta.config.minimumPasswordLength) {
+				winston.warn("Password too short, please try again");
+				return retryPassword(results);
+			}
+			
 			var adminUid;
 			async.waterfall([
-				function(next) {
+				function (next) {
 					User.create({username: results.username, password: results.password, email: results.email}, next);
 				},
-				function(uid, next) {
+				function (uid, next) {
 					adminUid = uid;
 					Groups.join('administrators', uid, next);
 				},
-				function(next) {
+				function (next) {
 					Groups.show('administrators', next);
 				},
-				function(next) {
+				function (next) {
 					Groups.ownership.grant(adminUid, 'administrators', next);
 				}
-			], function(err) {
+			], function (err) {
 				if (err) {
 					return callback(err);
 				}
@@ -382,7 +385,7 @@ function createCategories(next) {
 function createMenuItems(next) {
 	var db = require('./database');
 
-	db.exists('navigation:enabled', function(err, exists) {
+	db.exists('navigation:enabled', function (err, exists) {
 		if (err || exists) {
 			return next(err);
 		}
@@ -398,13 +401,13 @@ function createWelcomePost(next) {
 		Topics = require('./topics');
 
 	async.parallel([
-		function(next) {
+		function (next) {
 			fs.readFile(path.join(__dirname, '../', 'install/data/welcome.md'), next);
 		},
-		function(next) {
+		function (next) {
 			db.getObjectField('global', 'topicCount', next);
 		}
-	], function(err, results) {
+	], function (err, results) {
 		if (err) {
 			return next(err);
 		}
@@ -454,14 +457,14 @@ function enableDefaultPlugins(next) {
 		}
 	}
 
-	defaultEnabled = defaultEnabled.filter(function(plugin, index, array) {
+	defaultEnabled = defaultEnabled.filter(function (plugin, index, array) {
 		return array.indexOf(plugin) === index;
 	});
 
 	winston.info('[install/enableDefaultPlugins] activating default plugins', defaultEnabled);
 
 	var db = require('./database');
-	var order = defaultEnabled.map(function(plugin, index) {
+	var order = defaultEnabled.map(function (plugin, index) {
 		return index;
 	});
 	db.sortedSetAdd('plugins:active', order, defaultEnabled, next);
@@ -470,13 +473,13 @@ function enableDefaultPlugins(next) {
 function setCopyrightWidget(next) {
 	var	db = require('./database');
 	async.parallel({
-		footerJSON: function(next) {
+		footerJSON: function (next) {
 			fs.readFile(path.join(__dirname, '../', 'install/data/footer.json'), next);
 		},
-		footer: function(next) {
+		footer: function (next) {
 			db.getObjectField('widgets:global', 'footer', next);
 		}
-	}, function(err, results) {
+	}, function (err, results) {
 		if (err) {
 			return next(err);
 		}
@@ -490,7 +493,6 @@ function setCopyrightWidget(next) {
 }
 
 install.setup = function (callback) {
-
 
 	async.series([
 		checkSetupFlag,
@@ -507,7 +509,7 @@ install.setup = function (callback) {
 		setCopyrightWidget,
 		function (next) {
 			var upgrade = require('./upgrade');
-			upgrade.check(function(err, uptodate) {
+			upgrade.check(function (err, uptodate) {
 				if (err) {
 					return next(err);
 				}

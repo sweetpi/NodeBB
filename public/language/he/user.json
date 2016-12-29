@@ -23,7 +23,7 @@
     "profile": "פרופיל",
     "profile_views": "צפיות בפרופיל",
     "reputation": "מוניטין",
-    "favourites": "סימניות",
+    "bookmarks": "Bookmarks",
     "watched": "נצפה",
     "followers": "עוקבים",
     "following": "עוקב אחרי",
@@ -31,7 +31,8 @@
     "signature": "חתימה",
     "birthday": "יום הולדת",
     "chat": "צ'אט",
-    "chat_with": "צ'אט עם %1",
+    "chat_with": "Continue chat with %1",
+    "new_chat_with": "Start new chat with %1",
     "follow": "עקוב",
     "unfollow": "הפסק לעקוב",
     "more": "עוד",
@@ -123,5 +124,7 @@
     "info.banned-reason-label": "Reason",
     "info.banned-no-reason": "No reason given.",
     "info.username-history": "Username History",
-    "info.email-history": "Email History"
+    "info.email-history": "Email History",
+    "info.moderation-note": "Moderation Note",
+    "info.moderation-note.success": "Moderation note saved"
 }

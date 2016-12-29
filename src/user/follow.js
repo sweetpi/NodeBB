@@ -1,17 +1,17 @@
 
 'use strict';
 
-var async = require('async'),
-	plugins = require('../plugins'),
-	db = require('../database');
+var async = require('async');
+var plugins = require('../plugins');
+var db = require('../database');
 
-module.exports = function(User) {
+module.exports = function (User) {
 
-	User.follow = function(uid, followuid, callback) {
+	User.follow = function (uid, followuid, callback) {
 		toggleFollow('follow', uid, followuid, callback);
 	};
 
-	User.unfollow = function(uid, unfollowuid, callback) {
+	User.unfollow = function (uid, unfollowuid, callback) {
 		toggleFollow('unfollow', uid, unfollowuid, callback);
 	};
 
@@ -61,11 +61,11 @@ module.exports = function(User) {
 		], callback);
 	}
 
-	User.getFollowing = function(uid, start, stop, callback) {
+	User.getFollowing = function (uid, start, stop, callback) {
 		getFollow(uid, 'following', start, stop, callback);
 	};
 
-	User.getFollowers = function(uid, start, stop, callback) {
+	User.getFollowers = function (uid, start, stop, callback) {
 		getFollow(uid, 'followers', start, stop, callback);
 	};
 
@@ -73,28 +73,25 @@ module.exports = function(User) {
 		if (!parseInt(uid, 10)) {
 			return callback(null, []);
 		}
-
-		db.getSortedSetRevRange(type + ':' + uid, start, stop, function(err, uids) {
-			if (err) {
-				return callback(err);
+		async.waterfall([
+			function (next) {
+				db.getSortedSetRevRange(type + ':' + uid, start, stop, next);
+			},
+			function (uids, next) {
+				plugins.fireHook('filter:user.' + type, {
+					uids: uids,
+					uid: uid,
+					start: start,
+					stop: stop
+				}, next);
+			},
+			function (data, next) {
+				User.getUsers(data.uids, uid, next);
 			}
-
-			plugins.fireHook('filter:user.' + type, {
-				uids: uids,
-				uid: uid,
-				start: start,
-				stop: stop
-			}, function(err, data) {
-				if (err) {
-					return callback(err);
-				}
-
-				User.getUsers(data.uids, uid, callback);
-			});
-		});
+		], callback);
 	}
 
-	User.isFollowing = function(uid, theirid, callback) {
+	User.isFollowing = function (uid, theirid, callback) {
 		if (!parseInt(uid, 10) || !parseInt(theirid, 10)) {
 			return callback(null, false);
 		}

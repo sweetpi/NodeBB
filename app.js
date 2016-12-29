@@ -1,7 +1,7 @@
 /*
 	NodeBB - A better forum platform for the modern web
 	https://github.com/NodeBB/NodeBB/
-	Copyright (C) 2013-2016  NodeBB Inc.
+	Copyright (C) 2013-2017  NodeBB Inc.
 
 	This program is free software: you can redistribute it and/or modify
 	it under the terms of the GNU General Public License as published by
@@ -23,24 +23,25 @@
 var nconf = require('nconf');
 nconf.argv().env('__');
 
-var url = require('url'),
-	async = require('async'),
-	winston = require('winston'),
-	colors = require('colors'),
-	path = require('path'),
-	pkg = require('./package.json'),
-	file = require('./src/file');
+var url = require('url');
+var async = require('async');
+var winston = require('winston');
+var path = require('path');
+var pkg = require('./package.json');
+var file = require('./src/file');
 
 global.env = process.env.NODE_ENV || 'production';
 
 winston.remove(winston.transports.Console);
 winston.add(winston.transports.Console, {
 	colorize: true,
-	timestamp: function() {
+	timestamp: function () {
 		var date = new Date();
-		return date.getDate() + '/' + (date.getMonth() + 1) + ' ' + date.toTimeString().substr(0,5) + ' [' + global.process.pid + ']';
+		return (!!nconf.get('json-logging')) ? date.toJSON() :	date.getDate() + '/' + (date.getMonth() + 1) + ' ' + date.toTimeString().substr(0,8) + ' [' + global.process.pid + ']';
 	},
-	level: nconf.get('log-level') || (global.env === 'production' ? 'info' : 'verbose')
+	level: nconf.get('log-level') || (global.env === 'production' ? 'info' : 'verbose'),
+	json: (!!nconf.get('json-logging')),
+	stringify: (!!nconf.get('json-logging'))
 });
 
 
@@ -72,16 +73,23 @@ if (nconf.get('setup') || nconf.get('install')) {
 } else if (nconf.get('upgrade')) {
 	upgrade();
 } else if (nconf.get('reset')) {
-	require('./src/reset').reset();
+	async.waterfall([
+		async.apply(require('./src/reset').reset),
+		async.apply(require('./build').buildAll)
+	], function (err) {
+		process.exit(err ? 1 : 0);
+	});
 } else if (nconf.get('activate')) {
 	activate();
 } else if (nconf.get('plugins')) {
 	listPlugins();
+} else if (nconf.get('build')) {
+	require('./build').build(nconf.get('build'));
 } else {
 	start();
 }
 
-function loadConfig() {
+function loadConfig(callback) {
 	winston.verbose('* using configuration stored in: %s', configFile);
 
 	nconf.file({
@@ -107,6 +115,10 @@ function loadConfig() {
 
 	if (nconf.get('url')) {
 		nconf.set('url_parsed', url.parse(nconf.get('url')));
+	}
+
+	if (typeof callback === 'function') {
+		callback();
 	}
 }
 
@@ -146,34 +158,20 @@ function start() {
 	process.on('SIGTERM', shutdown);
 	process.on('SIGINT', shutdown);
 	process.on('SIGHUP', restart);
-	process.on('message', function(message) {
+	process.on('message', function (message) {
 		if (typeof message !== 'object') {
 			return;
 		}
 		var meta = require('./src/meta');
-		var emitter = require('./src/emitter');
+
 		switch (message.action) {
 			case 'reload':
 				meta.reload();
 			break;
-			case 'js-propagate':
-				meta.js.target = message.data;
-				emitter.emit('meta:js.compiled');
-				winston.verbose('[cluster] Client-side javascript and mapping propagated to worker %s', process.pid);
-			break;
-			case 'css-propagate':
-				meta.css.cache = message.cache;
-				meta.css.acpCache = message.acpCache;
-				emitter.emit('meta:css.compiled');
-				winston.verbose('[cluster] Stylesheets propagated to worker %s', process.pid);
-			break;
-			case 'templates:compiled':
-				emitter.emit('templates:compiled');
-			break;
 		}
 	});
 
-	process.on('uncaughtException', function(err) {
+	process.on('uncaughtException', function (err) {
 		winston.error(err.stack);
 		console.log(err.stack);
 
@@ -183,22 +181,27 @@ function start() {
 
 	async.waterfall([
 		async.apply(db.init),
-		async.apply(db.checkCompatibility),
-		function(next) {
-			require('./src/meta').configs.init(next);
+		function (next) {
+			var meta = require('./src/meta');
+			async.parallel([
+				async.apply(db.checkCompatibility),
+				async.apply(meta.configs.init),
+				function (next) {
+					if (nconf.get('dep-check') === undefined || nconf.get('dep-check') !== false) {
+						meta.dependencies.check(next);
+					} else {
+						winston.warn('[init] Dependency checking skipped!');
+						setImmediate(next);
+					}
+				},
+				function (next) {
+					require('./src/upgrade').check(next);
+				}
+			], function (err) {
+				next(err);
+			});
 		},
-		function(next) {
-			if (nconf.get('dep-check') === undefined || nconf.get('dep-check') !== false) {
-				require('./src/meta').dependencies.check(next);
-			} else {
-				winston.warn('[init] Dependency checking skipped!');
-				setImmediate(next);
-			}
-		},
-		function(next) {
-			require('./src/upgrade').check(next);
-		},
-		function(next) {
+		function (next) {
 			var webserver = require('./src/webserver');
 			require('./src/socket.io').init(webserver.server);
 
@@ -207,9 +210,9 @@ function start() {
 				require('./src/user').startJobs();
 			}
 
-			webserver.listen();
+			webserver.listen(next);
 		}
-	], function(err) {
+	], function (err) {
 		if (err) {
 			switch(err.message) {
 				case 'schema-out-of-date':
@@ -225,16 +228,18 @@ function start() {
 					winston.warn('    ./nodebb upgrade');
 					break;
 				default:
-					if (err.stacktrace !== false) {
-						winston.error(err.stack);
-					} else {
-						winston.error(err.message);
-					}
+					winston.error(err);
 					break;
 			}
 
 			// Either way, bad stuff happened. Abort start.
 			process.exit();
+		}
+
+		if (process.send) {
+			process.send({
+				action: 'listening'
+			});
 		}
 	});
 }
@@ -243,15 +248,23 @@ function setup() {
 	winston.info('NodeBB Setup Triggered via Command Line');
 
 	var install = require('./src/install');
+	var build = require('./build');
 
 	process.stdout.write('\nWelcome to NodeBB!\n');
 	process.stdout.write('\nThis looks like a new installation, so you\'ll have to answer a few questions about your environment before we can proceed.\n');
 	process.stdout.write('Press enter to accept the default setting (shown in brackets).\n');
 
-	install.setup(function (err, data) {
+	async.series([
+		async.apply(install.setup),
+		async.apply(loadConfig),
+		async.apply(build.buildAll)
+	], function (err, data) {
+		// Disregard build step data
+		data = data[0];
+
 		var separator = '     ';
 		if (process.stdout.columns > 10) {
-			for(var x=0,cols=process.stdout.columns-10;x<cols;x++) {
+			for(var x = 0,cols = process.stdout.columns - 10; x < cols; x++) {
 				separator += '=';
 			}
 		}
@@ -280,35 +293,49 @@ function setup() {
 }
 
 function upgrade() {
-	require('./src/database').init(function(err) {
+	var db = require('./src/database');
+	var meta = require('./src/meta');
+	var upgrade = require('./src/upgrade');
+	var build = require('./build');
+
+	async.series([
+		async.apply(db.init),
+		async.apply(meta.configs.init),
+		async.apply(upgrade.upgrade),
+		async.apply(build.buildAll)
+	], function (err) {
 		if (err) {
 			winston.error(err.stack);
-			process.exit();
+			process.exit(1);
+		} else {
+			process.exit(0);
 		}
-		require('./src/meta').configs.init(function () {
-			require('./src/upgrade').upgrade();
-		});
 	});
 }
 
 function activate() {
-	require('./src/database').init(function(err) {
+	var db = require('./src/database');
+	db.init(function (err) {
 		if (err) {
 			winston.error(err.stack);
 			process.exit(1);
 		}
 
-		var plugin = nconf.get('_')[1] ? nconf.get('_')[1] : nconf.get('activate'),
-			db = require('./src/database');
+		var plugin = nconf.get('activate');
+		if (plugin.indexOf('nodebb-') !== 0) {
+			// Allow omission of `nodebb-plugin-`
+			plugin = 'nodebb-plugin-' + plugin;
+		}
 
-		winston.info('Activating plugin %s', plugin);
-
-		db.sortedSetAdd('plugins:active', 0, plugin, start);
+		winston.info('Activating plugin `%s`', plugin);
+		db.sortedSetAdd('plugins:active', 0, plugin, function (err) {
+			process.exit(err ? 1 : 0);
+		});
 	});
 }
 
 function listPlugins() {
-	require('./src/database').init(function(err) {
+	require('./src/database').init(function (err) {
 		if (err) {
 			winston.error(err.stack);
 			process.exit(1);
@@ -316,7 +343,7 @@ function listPlugins() {
 
 		var db = require('./src/database');
 
-		db.getSortedSetRange('plugins:active', 0, -1, function(err, plugins) {
+		db.getSortedSetRange('plugins:active', 0, -1, function (err, plugins) {
 			if (err) {
 				winston.error(err.stack);
 				process.exit(1);

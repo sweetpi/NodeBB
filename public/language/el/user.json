@@ -23,7 +23,7 @@
     "profile": "Προφίλ",
     "profile_views": "Views του προφίλ",
     "reputation": "Φήμη",
-    "favourites": "Bookmarks",
+    "bookmarks": "Bookmarks",
     "watched": "Watched",
     "followers": "Ακόλουθοι",
     "following": "Ακολουθά",
@@ -31,7 +31,8 @@
     "signature": "Υπογραφή",
     "birthday": "Γενέθλια",
     "chat": "Συνομιλία",
-    "chat_with": "Chat with %1",
+    "chat_with": "Continue chat with %1",
+    "new_chat_with": "Start new chat with %1",
     "follow": "Ακολούθησε",
     "unfollow": "Μην Ακολουθείς",
     "more": "More",
@@ -123,5 +124,7 @@
     "info.banned-reason-label": "Reason",
     "info.banned-no-reason": "No reason given.",
     "info.username-history": "Username History",
-    "info.email-history": "Email History"
+    "info.email-history": "Email History",
+    "info.moderation-note": "Moderation Note",
+    "info.moderation-note.success": "Moderation note saved"
 }

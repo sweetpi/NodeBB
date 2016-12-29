@@ -23,7 +23,7 @@
     "profile": "Profiil",
     "profile_views": "Vaatamisi",
     "reputation": "Reputatsioon",
-    "favourites": "Järjehoidjad",
+    "bookmarks": "Bookmarks",
     "watched": "Vaadatud",
     "followers": "Jälgijad",
     "following": "Jälgimised",
@@ -31,7 +31,8 @@
     "signature": "Allkiri",
     "birthday": "Sünnipäev",
     "chat": "Vestlus",
-    "chat_with": "Vestle kasutajaga %1",
+    "chat_with": "Continue chat with %1",
+    "new_chat_with": "Start new chat with %1",
     "follow": "Jälgi",
     "unfollow": "Ära jälgi enam",
     "more": "Rohkem",
@@ -123,5 +124,7 @@
     "info.banned-reason-label": "Reason",
     "info.banned-no-reason": "No reason given.",
     "info.username-history": "Username History",
-    "info.email-history": "Email History"
+    "info.email-history": "Email History",
+    "info.moderation-note": "Moderation Note",
+    "info.moderation-note.success": "Moderation note saved"
 }

@@ -23,7 +23,7 @@
     "profile": "Profil",
     "profile_views": "Zobrazení profilu",
     "reputation": "Reputace",
-    "favourites": "Záložky",
+    "bookmarks": "Bookmarks",
     "watched": "Sledován",
     "followers": "Sledují ho",
     "following": "Sleduje",
@@ -31,7 +31,8 @@
     "signature": "Podpis",
     "birthday": "Datum narození",
     "chat": "Chat",
-    "chat_with": "Chatovat s %1",
+    "chat_with": "Continue chat with %1",
+    "new_chat_with": "Start new chat with %1",
     "follow": "Sledovat",
     "unfollow": "Nesledovat",
     "more": "Více",
@@ -123,5 +124,7 @@
     "info.banned-reason-label": "Reason",
     "info.banned-no-reason": "No reason given.",
     "info.username-history": "Username History",
-    "info.email-history": "Email History"
+    "info.email-history": "Email History",
+    "info.moderation-note": "Moderation Note",
+    "info.moderation-note.success": "Moderation note saved"
 }

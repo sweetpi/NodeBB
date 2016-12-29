@@ -13,19 +13,19 @@ var accountHelpers = require('./helpers');
 
 var postsController = {};
 
-postsController.getFavourites = function(req, res, next) {
+postsController.getBookmarks = function (req, res, next) {
 	var data = {
-		template: 'account/favourites',
-		set: 'favourites',
+		template: 'account/bookmarks',
+		set: 'bookmarks',
 		type: 'posts',
-		noItemsFoundKey: '[[topic:favourites.has_no_favourites]]',
+		noItemsFoundKey: '[[topic:bookmarks.has_no_bookmarks]]',
 		method: posts.getPostSummariesFromSet,
-		crumb: '[[user:favourites]]'
+		crumb: '[[user:bookmarks]]'
 	};
 	getFromUserSet(data, req, res, next);
 };
 
-postsController.getPosts = function(req, res, next) {
+postsController.getPosts = function (req, res, next) {
 	var data = {
 		template: 'account/posts',
 		set: 'posts',
@@ -37,7 +37,7 @@ postsController.getPosts = function(req, res, next) {
 	getFromUserSet(data, req, res, next);
 };
 
-postsController.getUpVotedPosts = function(req, res, next) {
+postsController.getUpVotedPosts = function (req, res, next) {
 	var data = {
 		template: 'account/upvoted',
 		set: 'upvote',
@@ -49,7 +49,7 @@ postsController.getUpVotedPosts = function(req, res, next) {
 	getFromUserSet(data, req, res, next);
 };
 
-postsController.getDownVotedPosts = function(req, res, next) {
+postsController.getDownVotedPosts = function (req, res, next) {
 	var data = {
 		template: 'account/downvoted',
 		set: 'downvote',
@@ -61,7 +61,7 @@ postsController.getDownVotedPosts = function(req, res, next) {
 	getFromUserSet(data, req, res, next);
 };
 
-postsController.getBestPosts = function(req, res, next) {
+postsController.getBestPosts = function (req, res, next) {
 	var data = {
 		template: 'account/best',
 		set: 'posts:votes',
@@ -73,7 +73,7 @@ postsController.getBestPosts = function(req, res, next) {
 	getFromUserSet(data, req, res, next);
 };
 
-postsController.getWatchedTopics = function(req, res, next) {
+postsController.getWatchedTopics = function (req, res, next) {
 	var data = {
 		template: 'account/watched',
 		set: 'followed_tids',
@@ -85,7 +85,7 @@ postsController.getWatchedTopics = function(req, res, next) {
 	getFromUserSet(data, req, res, next);
 };
 
-postsController.getTopics = function(req, res, next) {
+postsController.getTopics = function (req, res, next) {
 	var data = {
 		template: 'account/topics',
 		set: 'topics',
@@ -97,56 +97,63 @@ postsController.getTopics = function(req, res, next) {
 	getFromUserSet(data, req, res, next);
 };
 
-function getFromUserSet(data, req, res, next) {
-	async.parallel({
-		settings: function(next) {
-			user.getSettings(req.uid, next);
-		},
-		userData: function(next) {
-			accountHelpers.getUserDataByUserSlug(req.params.userslug, req.uid, next);
-		}
-	}, function(err, results) {
-		if (err || !results.userData) {
-			return next(err);
-		}
-
-		var userData = results.userData;
-
-		var setName = 'uid:' + userData.uid + ':' + data.set;
-
-		var page = Math.max(1, parseInt(req.query.page, 10) || 1);
-		var itemsPerPage = (data.template === 'account/topics' || data.template === 'account/watched') ? results.settings.topicsPerPage : results.settings.postsPerPage;
-
-		async.parallel({
-			itemCount: function(next) {
-				if (results.settings.usePagination) {
-					db.sortedSetCard(setName, next);
-				} else {
-					next(null, 0);
+function getFromUserSet(data, req, res, callback) {
+	var userData;
+	var itemsPerPage;
+	var page = Math.max(1, parseInt(req.query.page, 10) || 1);
+	async.waterfall([
+		function (next) {
+			async.parallel({
+				settings: function (next) {
+					user.getSettings(req.uid, next);
+				},
+				userData: function (next) {
+					accountHelpers.getUserDataByUserSlug(req.params.userslug, req.uid, next);
 				}
-			},
-			data: function(next) {
-				var start = (page - 1) * itemsPerPage;
-				var stop = start + itemsPerPage - 1;
-				data.method(setName, req.uid, start, stop, next);
-			}
-		}, function(err, results) {
-			if (err) {
-				return next(err);
+			}, next);
+		},
+		function (results, next) {
+			if (!results.userData) {
+				return callback();
 			}
 
-			userData[data.type] = results.data[data.type];
-			userData.nextStart = results.data.nextStart;
+			userData = results.userData;
 
-			var pageCount = Math.ceil(results.itemCount / itemsPerPage);
-			userData.pagination = pagination.create(page, pageCount);
+			var setName = 'uid:' + userData.uid + ':' + data.set;
 
-			userData.noItemsFoundKey = data.noItemsFoundKey;
-			userData.title = '[[pages:' + data.template + ', ' + userData.username + ']]';
-			userData.breadcrumbs = helpers.buildBreadcrumbs([{text: userData.username, url: '/user/' + userData.userslug}, {text: data.crumb}]);
+			itemsPerPage = (data.template === 'account/topics' || data.template === 'account/watched') ? results.settings.topicsPerPage : results.settings.postsPerPage;
 
-			res.render(data.template, userData);
-		});
+			async.parallel({
+				itemCount: function (next) {
+					if (results.settings.usePagination) {
+						db.sortedSetCard(setName, next);
+					} else {
+						next(null, 0);
+					}
+				},
+				data: function (next) {
+					var start = (page - 1) * itemsPerPage;
+					var stop = start + itemsPerPage - 1;
+					data.method(setName, req.uid, start, stop, next);
+				}
+			}, next);
+		}
+	], function (err, results) {
+		if (err) {
+			return callback(err);
+		}
+
+		userData[data.type] = results.data[data.type];
+		userData.nextStart = results.data.nextStart;
+
+		var pageCount = Math.ceil(results.itemCount / itemsPerPage);
+		userData.pagination = pagination.create(page, pageCount);
+
+		userData.noItemsFoundKey = data.noItemsFoundKey;
+		userData.title = '[[pages:' + data.template + ', ' + userData.username + ']]';
+		userData.breadcrumbs = helpers.buildBreadcrumbs([{text: userData.username, url: '/user/' + userData.userslug}, {text: data.crumb}]);
+
+		res.render(data.template, userData);
 	});
 }
 

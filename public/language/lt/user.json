@@ -23,7 +23,7 @@
     "profile": "Profilis",
     "profile_views": "Profilio peržiūros",
     "reputation": "Reputacija",
-    "favourites": "Žymės",
+    "bookmarks": "Bookmarks",
     "watched": "Peržiūrėjo",
     "followers": "Sekėjai",
     "following": "Seka",
@@ -31,7 +31,8 @@
     "signature": "Parašas",
     "birthday": "Gimimo diena",
     "chat": "Susirašinėti",
-    "chat_with": "Susirašinėti su %1",
+    "chat_with": "Continue chat with %1",
+    "new_chat_with": "Start new chat with %1",
     "follow": "Sekti",
     "unfollow": "Nesekti",
     "more": "Daugiau",
@@ -123,5 +124,7 @@
     "info.banned-reason-label": "Priežastis",
     "info.banned-no-reason": "Be priežasties",
     "info.username-history": "Username History",
-    "info.email-history": "Email History"
+    "info.email-history": "Email History",
+    "info.moderation-note": "Moderation Note",
+    "info.moderation-note.success": "Moderation note saved"
 }

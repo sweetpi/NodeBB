@@ -9,15 +9,16 @@ var categories = require('./categories');
 var topics = require('./topics');
 var privileges = require('./privileges');
 var meta = require('./meta');
+var plugins = require('./plugins');
 var utils = require('../public/src/utils');
 
 var sitemap = {
-		maps: {
-			topics: []
-		}
-	};
+	maps: {
+		topics: []
+	}
+};
 
-sitemap.render = function(callback) {
+sitemap.render = function (callback) {
 	var numTopics = parseInt(meta.config.sitemapTopics, 10) || 500;
 	var returnData = {
 			url: nconf.get('url'),
@@ -27,17 +28,17 @@ sitemap.render = function(callback) {
 
 	async.waterfall([
 		async.apply(db.getSortedSetRange, 'topics:recent', 0, -1),
-		function(tids, next) {
+		function (tids, next) {
 			privileges.topics.filterTids('read', tids, 0, next);
 		}
-	], function(err, tids) {
+	], function (err, tids) {
 		if (err) {
 			numPages = 1;
 		} else {
 			numPages = Math.ceil(tids.length / numTopics);
 		}
 
-		for(var x=1;x<=numPages;x++) {
+		for(var x = 1; x <= numPages; x++) {
 			returnData.topics.push(x);
 		}
 
@@ -45,7 +46,7 @@ sitemap.render = function(callback) {
 	});
 };
 
-sitemap.getPages = function(callback) {
+sitemap.getPages = function (callback) {
 	if (
 		sitemap.maps.pages &&
 		Date.now() < parseInt(sitemap.maps.pages.cacheSetTimestamp, 10) + parseInt(sitemap.maps.pages.cacheResetPeriod, 10)
@@ -71,16 +72,21 @@ sitemap.getPages = function(callback) {
 			priority: 0.4
 		}];
 
-	sitemap.maps.pages = sm.createSitemap({
-		hostname: nconf.get('url'),
-		cacheTime: 1000 * 60 * 60 * 24,	// Cached for 24 hours
-		urls: urls
-	});
+	plugins.fireHook('filter:sitemap.getPages', {urls: urls}, function (err, data) {
+		if (err) {
+			return callback(err);
+		}
+		sitemap.maps.pages = sm.createSitemap({
+			hostname: nconf.get('url'),
+			cacheTime: 1000 * 60 * 60 * 24,	// Cached for 24 hours
+			urls: data.urls
+		});
 
-	sitemap.maps.pages.toXML(callback);
+		sitemap.maps.pages.toXML(callback);
+	});
 };
 
-sitemap.getCategories = function(callback) {
+sitemap.getCategories = function (callback) {
 	if (
 		sitemap.maps.categories &&
 		Date.now() < parseInt(sitemap.maps.categories.cacheSetTimestamp, 10) + parseInt(sitemap.maps.categories.cacheResetPeriod, 10)
@@ -89,12 +95,12 @@ sitemap.getCategories = function(callback) {
 	}
 
 	var categoryUrls = [];
-	categories.getCategoriesByPrivilege('categories:cid', 0, 'find', function(err, categoriesData) {
+	categories.getCategoriesByPrivilege('categories:cid', 0, 'find', function (err, categoriesData) {
 		if (err) {
 			return callback(err);
 		}
 
-		categoriesData.forEach(function(category) {
+		categoriesData.forEach(function (category) {
 			if (category) {
 				categoryUrls.push({
 					url: '/category/' + category.slug,
@@ -114,7 +120,7 @@ sitemap.getCategories = function(callback) {
 	});
 };
 
-sitemap.getTopicPage = function(page, callback) {
+sitemap.getTopicPage = function (page, callback) {
 	if (parseInt(page, 10) <= 0) {
 		return callback();
 	}
@@ -124,30 +130,30 @@ sitemap.getTopicPage = function(page, callback) {
 	var max = min + numTopics;
 
 	if (
-		sitemap.maps.topics[page-1] &&
-		Date.now() < parseInt(sitemap.maps.topics[page-1].cacheSetTimestamp, 10) + parseInt(sitemap.maps.topics[page-1].cacheResetPeriod, 10)
+		sitemap.maps.topics[page - 1] &&
+		Date.now() < parseInt(sitemap.maps.topics[page - 1].cacheSetTimestamp, 10) + parseInt(sitemap.maps.topics[page - 1].cacheResetPeriod, 10)
 	) {
-		return sitemap.maps.topics[page-1].toXML(callback);
+		return sitemap.maps.topics[page - 1].toXML(callback);
 	}
 
 	var topicUrls = [];
 
 	async.waterfall([
-		function(next) {
+		function (next) {
 			db.getSortedSetRevRange('topics:recent', min, max, next);
 		},
-		function(tids, next) {
+		function (tids, next) {
 			privileges.topics.filterTids('read', tids, 0, next);
 		},
-		function(tids, next) {
+		function (tids, next) {
 			topics.getTopicsFields(tids, ['tid', 'title', 'slug', 'lastposttime'], next);
 		}
-	], function(err, topics) {
+	], function (err, topics) {
 		if (err) {
 			return callback(err);
 		}
 
-		topics.forEach(function(topic) {
+		topics.forEach(function (topic) {
 			if (topic) {
 				topicUrls.push({
 					url: '/topic/' + topic.slug,
@@ -158,17 +164,17 @@ sitemap.getTopicPage = function(page, callback) {
 			}
 		});
 
-		sitemap.maps.topics[page-1] = sm.createSitemap({
+		sitemap.maps.topics[page - 1] = sm.createSitemap({
 			hostname: nconf.get('url'),
 			cacheTime: 1000 * 60 * 60,	// Cached for 1 hour
 			urls: topicUrls
 		});
 
-		sitemap.maps.topics[page-1].toXML(callback);
+		sitemap.maps.topics[page - 1].toXML(callback);
 	});
 };
 
-sitemap.clearCache = function() {
+sitemap.clearCache = function () {
 	if (sitemap.obj) {
 		sitemap.obj.clearCache();
 	}

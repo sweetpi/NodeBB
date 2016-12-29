@@ -1,22 +1,70 @@
 'use strict';
 
-var fs = require('fs'),
-	path = require('path'),
-	semver = require('semver'),
-	async = require('async'),
-	winston = require('winston'),
-	nconf = require('nconf'),
-	_ = require('underscore'),
-	file = require('../file');
+var db = require('../database');
+var fs = require('fs');
+var path = require('path');
+var semver = require('semver');
+var async = require('async');
+var winston = require('winston');
+var nconf = require('nconf');
+var _ = require('underscore');
+var file = require('../file');
 
-var utils = require('../../public/src/utils'),
-	meta = require('../meta');
+var utils = require('../../public/src/utils');
+var meta = require('../meta');
 
 
-module.exports = function(Plugins) {
+module.exports = function (Plugins) {
+	Plugins.getPluginPaths = function (callback) {
+		async.waterfall([
+			function (next) {
+				db.getSortedSetRange('plugins:active', 0, -1, next);
+			},
+			function (plugins, next) {
+				if (!Array.isArray(plugins)) {
+					return next();
+				}
 
-	Plugins.loadPlugin = function(pluginPath, callback) {
-		Plugins.loadPluginInfo(pluginPath, function(err, pluginData) {
+				plugins = plugins.filter(function (plugin) {
+					return plugin && typeof plugin === 'string';
+				}).map(function (plugin) {
+					return path.join(__dirname, '../../node_modules/', plugin);
+				});
+
+				async.filter(plugins, file.exists, function (plugins) {
+					next(null, plugins);
+				});
+			},
+		], callback);
+	};
+
+	Plugins.prepareForBuild = function (callback) {
+		Plugins.cssFiles.length = 0;
+		Plugins.lessFiles.length = 0;
+		Plugins.clientScripts.length = 0;
+		Plugins.acpScripts.length = 0;
+		
+		async.waterfall([
+			async.apply(Plugins.getPluginPaths),
+			function (paths, next) {
+				async.map(paths, function (path, next) {
+					Plugins.loadPluginInfo(path, next);
+				}, next);
+			},
+			function (plugins, next) {
+				async.each(plugins, function (pluginData, next) {
+					async.parallel([
+						async.apply(mapFiles, pluginData, 'css', 'cssFiles'),
+						async.apply(mapFiles, pluginData, 'less', 'lessFiles'),
+						async.apply(mapClientSideScripts, pluginData)
+					], next);
+				}, next);
+			}
+		], callback);
+	};
+
+	Plugins.loadPlugin = function (pluginPath, callback) {
+		Plugins.loadPluginInfo(pluginPath, function (err, pluginData) {
 			if (err) {
 				if (err.message === '[[error:parse-error]]') {
 					return callback();
@@ -27,28 +75,28 @@ module.exports = function(Plugins) {
 			checkVersion(pluginData);
 
 			async.parallel([
-				function(next) {
+				function (next) {
 					registerHooks(pluginData, pluginPath, next);
 				},
-				function(next) {
+				function (next) {
 					mapStaticDirectories(pluginData, pluginPath, next);
 				},
-				function(next) {
+				function (next) {
 					mapFiles(pluginData, 'css', 'cssFiles', next);
 				},
-				function(next) {
+				function (next) {
 					mapFiles(pluginData, 'less', 'lessFiles', next);
 				},
-				function(next) {
+				function (next) {
 					mapClientSideScripts(pluginData, next);
 				},
-				function(next) {
+				function (next) {
 					mapClientModules(pluginData, next);
 				},
-				function(next) {
+				function (next) {
 					loadLanguages(pluginData, next);
 				}
-			], function(err) {
+			], function (err) {
 				if (err) {
 					winston.verbose('[plugins] Could not load plugin : ' + pluginData.id);
 					return callback(err);
@@ -89,7 +137,7 @@ module.exports = function(Plugins) {
 			}
 
 			if (Array.isArray(pluginData.hooks) && pluginData.hooks.length > 0) {
-				async.each(pluginData.hooks, function(hook, next) {
+				async.each(pluginData.hooks, function (hook, next) {
 					Plugins.registerHook(pluginData.id, hook, next);
 				}, callback);
 			} else {
@@ -114,7 +162,7 @@ module.exports = function(Plugins) {
 				var realPath = pluginData.staticDirs[mappedPath];
 				var staticDir = path.join(pluginPath, realPath);
 
-				file.exists(staticDir, function(exists) {
+				file.exists(staticDir, function (exists) {
 					if (exists) {
 						Plugins.staticDirs[pluginData.id + '/' + mappedPath] = staticDir;
 					} else {
@@ -139,7 +187,7 @@ module.exports = function(Plugins) {
 				winston.verbose('[plugins] Found ' + pluginData[type].length + ' ' + type + ' file(s) for plugin ' + pluginData.id);
 			}
 
-			Plugins[globalArray] = Plugins[globalArray].concat(pluginData[type].map(function(file) {
+			Plugins[globalArray] = Plugins[globalArray].concat(pluginData[type].map(function (file) {
 				return path.join(pluginData.id, file);
 			}));
 		}
@@ -152,7 +200,7 @@ module.exports = function(Plugins) {
 				winston.verbose('[plugins] Found ' + pluginData.scripts.length + ' js file(s) for plugin ' + pluginData.id);
 			}
 
-			Plugins.clientScripts = Plugins.clientScripts.concat(pluginData.scripts.map(function(file) {
+			Plugins.clientScripts = Plugins.clientScripts.concat(pluginData.scripts.map(function (file) {
 				return resolveModulePath(path.join(__dirname, '../../node_modules/', pluginData.id, file), file);
 			})).filter(Boolean);
 		}
@@ -162,7 +210,7 @@ module.exports = function(Plugins) {
 				winston.verbose('[plugins] Found ' + pluginData.acpScripts.length + ' ACP js file(s) for plugin ' + pluginData.id);
 			}
 
-			Plugins.acpScripts = Plugins.acpScripts.concat(pluginData.acpScripts.map(function(file) {
+			Plugins.acpScripts = Plugins.acpScripts.concat(pluginData.acpScripts.map(function (file) {
 				return resolveModulePath(path.join(__dirname, '../../node_modules/', pluginData.id, file), file);
 			})).filter(Boolean);
 		}
@@ -184,7 +232,7 @@ module.exports = function(Plugins) {
 
 			var strip = pluginData.hasOwnProperty('modulesStrip') ? parseInt(pluginData.modulesStrip, 10) : 0;
 
-			pluginData.modules.forEach(function(file) {
+			pluginData.modules.forEach(function (file) {
 				if (strip) {
 					modules[file.replace(new RegExp('\.?(\/[^\/]+){' + strip + '}\/'), '')] = path.join('./node_modules/', pluginData.id, file);
 				} else {
@@ -217,21 +265,23 @@ module.exports = function(Plugins) {
 			return callback();
 		}
 
-		var pathToFolder = path.join(__dirname, '../../node_modules/', pluginData.id, pluginData.languages),
-			fallbackMap = {};
+		var pathToFolder = path.join(__dirname, '../../node_modules/', pluginData.id, pluginData.languages);
+		var defaultLang = (pluginData.defaultLang || 'en_GB').replace('_', '-').replace('@', '-x-');
 
-		utils.walk(pathToFolder, function(err, languages) {
+		utils.walk(pathToFolder, function (err, languages) {
 			if (err) {
 				return callback(err);
 			}
 
-			async.each(languages, function(pathToLang, next) {
-				fs.readFile(pathToLang, function(err, file) {
+			async.each(languages, function (pathToLang, next) {
+				fs.readFile(pathToLang, function (err, file) {
 					if (err) {
 						return next(err);
 					}
 					var data;
-					var route = pathToLang.replace(pathToFolder + '/', '');
+					var language = path.dirname(pathToLang).split(/[\/\\]/).pop().replace('_', '-').replace('@', '-x-');
+					var namespace = path.basename(pathToLang, '.json');
+					var langNamespace = language + '/' + namespace;
 
 					try {
 						data = JSON.parse(file.toString());
@@ -240,24 +290,21 @@ module.exports = function(Plugins) {
 						return next(err);
 					}
 
-					Plugins.customLanguages[route] = Plugins.customLanguages[route] || {};
-					_.extendOwn(Plugins.customLanguages[route], data);
+					Plugins.customLanguages[langNamespace] = Plugins.customLanguages[langNamespace] || {};
+					Object.assign(Plugins.customLanguages[langNamespace], data);
 
-					if (pluginData.defaultLang && pathToLang.endsWith(pluginData.defaultLang + '/' + path.basename(pathToLang))) {
-						Plugins.languageCodes.map(function(code) {
-							if (pluginData.defaultLang !== code) {
-								return code + '/' + path.basename(pathToLang);
-							} else {
-								return null;
-							}
-						}).filter(Boolean).forEach(function(key) {
-							Plugins.customLanguages[key] = _.defaults(Plugins.customLanguages[key] || {}, data);
+					if (defaultLang && defaultLang === language) {
+						Plugins.languageCodes.filter(function (lang) {
+							return defaultLang !== lang;
+						}).forEach(function (lang) {
+							var langNS = lang + '/' + namespace;
+							Plugins.customLanguages[langNS] = Object.assign(Plugins.customLanguages[langNS] || {}, data);
 						});
 					}
 
 					next();
 				});
-			}, function(err) {
+			}, function (err) {
 				if (err) {
 					return callback(err);
 				}
@@ -292,21 +339,23 @@ module.exports = function(Plugins) {
 		}
 	}
 
-	Plugins.loadPluginInfo = function(pluginPath, callback) {
+	Plugins.loadPluginInfo = function (pluginPath, callback) {
 		async.parallel({
-			package: function(next) {
+			package: function (next) {
 				fs.readFile(path.join(pluginPath, 'package.json'), next);
 			},
-			plugin: function(next) {
+			plugin: function (next) {
 				fs.readFile(path.join(pluginPath, 'plugin.json'), next);
 			}
-		}, function(err, results) {
+		}, function (err, results) {
 			if (err) {
 				return callback(err);
 			}
+			var pluginData;
+			var packageData;
 			try {
-				var pluginData = JSON.parse(results.plugin);
-				var packageData = JSON.parse(results.package);
+				pluginData = JSON.parse(results.plugin);
+				packageData = JSON.parse(results.package);
 
 				pluginData.id = packageData.name;
 				pluginData.name = packageData.name;
@@ -314,16 +363,15 @@ module.exports = function(Plugins) {
 				pluginData.version = packageData.version;
 				pluginData.repository = packageData.repository;
 				pluginData.nbbpm = packageData.nbbpm;
-
-				callback(null, pluginData);
 			} catch(err) {
 				var pluginDir = pluginPath.split(path.sep);
-				pluginDir = pluginDir[pluginDir.length -1];
+				pluginDir = pluginDir[pluginDir.length - 1];
 
 				winston.error('[plugins/' + pluginDir + '] Error in plugin.json or package.json! ' + err.message);
 
-				callback(new Error('[[error:parse-error]]'));
+				return callback(new Error('[[error:parse-error]]'));
 			}
+			callback(null, pluginData);
 		});
 	};
 };

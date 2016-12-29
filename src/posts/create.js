@@ -9,11 +9,11 @@ var plugins = require('../plugins');
 var user = require('../user');
 var topics = require('../topics');
 var categories = require('../categories');
+var utils = require('../../public/src/utils');
 
+module.exports = function (Posts) {
 
-module.exports = function(Posts) {
-
-	Posts.create = function(data, callback) {
+	Posts.create = function (data, callback) {
 		// This is an internal method, consider using Topics.reply instead
 		var uid = data.uid;
 		var tid = data.tid;
@@ -24,13 +24,17 @@ module.exports = function(Posts) {
 			return callback(new Error('[[error:invalid-uid]]'));
 		}
 
+		if (data.toPid && !utils.isNumber(data.toPid)) {
+			return callback(new Error('[[error:invalid-pid]]'));
+		}
+
 		var postData;
 
 		async.waterfall([
-			function(next) {
+			function (next) {
 				db.incrObjectField('global', 'nextPid', next);
 			},
-			function(pid, next) {
+			function (pid, next) {
 
 				postData = {
 					'pid': pid,
@@ -38,9 +42,6 @@ module.exports = function(Posts) {
 					'tid': tid,
 					'content': content,
 					'timestamp': timestamp,
-					'reputation': 0,
-					'editor': '',
-					'edited': 0,
 					'deleted': 0
 				};
 
@@ -58,23 +59,23 @@ module.exports = function(Posts) {
 
 				plugins.fireHook('filter:post.save', postData, next);
 			},
-			function(postData, next) {
+			function (postData, next) {
 				plugins.fireHook('filter:post.create', {post: postData, data: data}, next);
 			},
-			function(data, next) {
+			function (data, next) {
 				postData = data.post;
 				db.setObject('post:' + postData.pid, postData, next);
 			},
-			function(next) {
+			function (next) {
 				async.parallel([
-					function(next) {
+					function (next) {
 						user.onNewPostMade(postData, next);
 					},
-					function(next) {
+					function (next) {
 						topics.onNewPostMade(postData, next);
 					},
-					function(next) {
-						topics.getTopicFields(tid, ['cid', 'pinned'], function(err, topicData) {
+					function (next) {
+						topics.getTopicFields(tid, ['cid', 'pinned'], function (err, topicData) {
 							if (err) {
 								return next(err);
 							}
@@ -82,20 +83,29 @@ module.exports = function(Posts) {
 							categories.onNewPostMade(topicData.cid, topicData.pinned, postData, next);
 						});
 					},
-					function(next) {
+					function (next) {
 						db.sortedSetAdd('posts:pid', timestamp, postData.pid, next);
 					},
-					function(next) {
+					function (next) {
+						if (!postData.toPid) {
+							return next(null);
+						}
+						async.parallel([
+							async.apply(db.sortedSetAdd, 'pid:' + postData.toPid + ':replies', timestamp, postData.pid),
+							async.apply(db.incrObjectField, 'post:' + postData.toPid, 'replies')
+						], next);
+					},
+					function (next) {
 						db.incrObjectField('global', 'postCount', next);
 					}
-				], function(err) {
+				], function (err) {
 					if (err) {
 						return next(err);
 					}
 					plugins.fireHook('filter:post.get', postData, next);
 				});
 			},
-			function(postData, next) {
+			function (postData, next) {
 				plugins.fireHook('action:post.save', _.clone(postData));
 				next(null, postData);
 			}

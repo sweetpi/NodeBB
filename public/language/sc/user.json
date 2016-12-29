@@ -23,7 +23,7 @@
     "profile": "Perfilu",
     "profile_views": "Bìsitas a su perfilu",
     "reputation": "Nodidos",
-    "favourites": "Bookmarks",
+    "bookmarks": "Bookmarks",
     "watched": "Watched",
     "followers": "Sighidores",
     "following": "Sighende",
@@ -31,7 +31,8 @@
     "signature": "Firma",
     "birthday": "Cumpleannu",
     "chat": "Tzarra",
-    "chat_with": "Chat with %1",
+    "chat_with": "Continue chat with %1",
+    "new_chat_with": "Start new chat with %1",
     "follow": "Sighi",
     "unfollow": "Non sighes prus",
     "more": "More",
@@ -123,5 +124,7 @@
     "info.banned-reason-label": "Reason",
     "info.banned-no-reason": "No reason given.",
     "info.username-history": "Username History",
-    "info.email-history": "Email History"
+    "info.email-history": "Email History",
+    "info.moderation-note": "Moderation Note",
+    "info.moderation-note.success": "Moderation note saved"
 }
