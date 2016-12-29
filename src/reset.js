@@ -8,8 +8,8 @@ var db = require('./database');
 var Reset = {};
 
 
-Reset.reset = function() {
-	db.init(function(err) {
+Reset.reset = function (callback) {
+	db.init(function (err) {
 		if (err) {
 			winston.error(err.message);
 			process.exit();
@@ -17,28 +17,33 @@ Reset.reset = function() {
 
 		if (nconf.get('t')) {
 			if(nconf.get('t') === true) {
-				resetThemes();
+				resetThemes(callback);
 			} else {
-				resetTheme(nconf.get('t'));
+				resetTheme(nconf.get('t'), callback);
 			}
 		} else if (nconf.get('p')) {
 			if (nconf.get('p') === true) {
-				resetPlugins();
+				resetPlugins(callback);
 			} else {
-				resetPlugin(nconf.get('p'));
+				resetPlugin(nconf.get('p'), callback);
 			}
 		} else if (nconf.get('w')) {
-			resetWidgets();
+			resetWidgets(callback);
 		} else if (nconf.get('s')) {
-			resetSettings();
+			resetSettings(callback);
 		} else if (nconf.get('a')) {
-			require('async').series([resetWidgets, resetThemes, resetPlugins, resetSettings], function(err) {
+			require('async').series([resetWidgets, resetThemes, resetPlugins, resetSettings], function (err) {
 				if (!err) {
 					winston.info('[reset] Reset complete.');
 				} else {
 					winston.error('[reset] Errors were encountered while resetting your forum settings: %s', err.message);
 				}
-				process.exit();
+
+				if (typeof callback === 'function') {
+					callback();
+				} else {
+					process.exit(0);
+				}
 			});
 		} else {
 			process.stdout.write('\nNodeBB Reset\n'.bold);
@@ -52,6 +57,7 @@ Reset.reset = function() {
 
 			process.stdout.write('\nPlugin and theme reset flags (-p & -t) can take a single argument\n');
 			process.stdout.write('    e.g. ./nodebb reset -p nodebb-plugin-mentions, ./nodebb reset -t nodebb-theme-persona\n');
+
 			process.exit();
 		}
 	});
@@ -59,7 +65,7 @@ Reset.reset = function() {
 
 function resetSettings(callback) {
 	var meta = require('./meta');
-	meta.configs.set('allowLocalLogin', 1, function(err) {
+	meta.configs.set('allowLocalLogin', 1, function (err) {
 		winston.info('[reset] Settings reset to default');
 		if (typeof callback === 'function') {
 			callback(err);
@@ -69,11 +75,11 @@ function resetSettings(callback) {
 	});
 }
 
-function resetTheme(themeId) {
+function resetTheme(themeId, callback) {
 	var meta = require('./meta');
 	var fs = require('fs');
 	
-	fs.access('node_modules/' + themeId + '/package.json', function(err, fd) {
+	fs.access('node_modules/' + themeId + '/package.json', function (err, fd) {
 		if (err) {
 			winston.warn('[reset] Theme `%s` is not installed on this forum', themeId);
 			process.exit();
@@ -81,14 +87,18 @@ function resetTheme(themeId) {
 			meta.themes.set({
 				type: 'local',
 				id: themeId
-			}, function(err) {
+			}, function (err) {
 				if (err) {
 					winston.warn('[reset] Failed to reset theme to ' + themeId);
 				} else {
 					winston.info('[reset] Theme reset to ' + themeId);
 				}
 
-				process.exit();
+				if (typeof callback === 'function') {
+					callback();
+				} else {
+					process.exit(0);
+				}
 			});		
 		}
 	});
@@ -100,22 +110,22 @@ function resetThemes(callback) {
 	meta.themes.set({
 		type: 'local',
 		id: 'nodebb-theme-persona'
-	}, function(err) {
+	}, function (err) {
 		winston.info('[reset] Theme reset to Persona');
 		if (typeof callback === 'function') {
 			callback(err);
 		} else {
-			process.exit();
+			process.exit(0);
 		}
 	});
 }
 
-function resetPlugin(pluginId) {
+function resetPlugin(pluginId, callback) {
 	var active = false;
 
 	async.waterfall([
 		async.apply(db.isSortedSetMember, 'plugins:active', pluginId),
-		function(isMember, next) {
+		function (isMember, next) {
 			active = isMember;
 
 			if (isMember) {
@@ -124,7 +134,7 @@ function resetPlugin(pluginId) {
 				next();
 			}
 		}
-	], function(err) {
+	], function (err) {
 		if (err) {
 			winston.error('[reset] Could not disable plugin: %s encountered error %s', pluginId, err.message);
 		} else {
@@ -136,23 +146,27 @@ function resetPlugin(pluginId) {
 			}
 		}
 
-		process.exit();
+		if (typeof callback === 'function') {
+			callback();
+		} else {
+			process.exit(0);
+		}
 	});
 }
 
 function resetPlugins(callback) {
-	db.delete('plugins:active', function(err) {
+	db.delete('plugins:active', function (err) {
 		winston.info('[reset] All Plugins De-activated');
 		if (typeof callback === 'function') {
 			callback(err);
 		} else {
-			process.exit();
+			process.exit(0);
 		}
 	});
 }
 
 function resetWidgets(callback) {
-	require('./widgets').reset(function(err) {
+	require('./widgets').reset(function (err) {
 		winston.info('[reset] All Widgets moved to Draft Zone');
 		if (typeof callback === 'function') {
 			callback(err);

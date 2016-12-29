@@ -23,7 +23,7 @@
     "profile": "Profilo",
     "profile_views": "Visite al profilo",
     "reputation": "Reputazione",
-    "favourites": "Preferiti",
+    "bookmarks": "Bookmarks",
     "watched": "Osservati",
     "followers": "Da chi è seguito",
     "following": "Chi segue",
@@ -31,7 +31,8 @@
     "signature": "Firma",
     "birthday": "Data di nascita",
     "chat": "Chat",
-    "chat_with": "Chatta con %1",
+    "chat_with": "Continue chat with %1",
+    "new_chat_with": "Start new chat with %1",
     "follow": "Segui",
     "unfollow": "Smetti di seguire",
     "more": "Altro",
@@ -123,5 +124,7 @@
     "info.banned-reason-label": "Motivo",
     "info.banned-no-reason": "Non è stata data nessuna motivazione.",
     "info.username-history": "Username History",
-    "info.email-history": "Email History"
+    "info.email-history": "Email History",
+    "info.moderation-note": "Moderation Note",
+    "info.moderation-note.success": "Moderation note saved"
 }

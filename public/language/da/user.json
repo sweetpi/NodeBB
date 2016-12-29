@@ -23,7 +23,7 @@
     "profile": "Profil",
     "profile_views": "Profil visninger",
     "reputation": "Omdømme",
-    "favourites": "Bogmærker",
+    "bookmarks": "Bookmarks",
     "watched": "Set",
     "followers": "Followers",
     "following": "Følger",
@@ -31,7 +31,8 @@
     "signature": "Signatur",
     "birthday": "Fødselsdag",
     "chat": "Chat",
-    "chat_with": "Chat med %1",
+    "chat_with": "Continue chat with %1",
+    "new_chat_with": "Start new chat with %1",
     "follow": "Følg",
     "unfollow": "Følg ikke",
     "more": "Mere",
@@ -123,5 +124,7 @@
     "info.banned-reason-label": "Reason",
     "info.banned-no-reason": "No reason given.",
     "info.username-history": "Username History",
-    "info.email-history": "Email History"
+    "info.email-history": "Email History",
+    "info.moderation-note": "Moderation Note",
+    "info.moderation-note.success": "Moderation note saved"
 }

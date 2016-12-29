@@ -23,7 +23,7 @@
     "profile": "Profil",
     "profile_views": "Profil Görüntülemeleri",
     "reputation": "Saygınlık",
-    "favourites": "Yer imleri",
+    "bookmarks": "Yer İmleri",
     "watched": "İzlendi",
     "followers": "Takipçiler",
     "following": "Takip Ediyor",
@@ -31,7 +31,8 @@
     "signature": "İmza",
     "birthday": "Doğum Tarihi",
     "chat": "Sohbet",
-    "chat_with": "%1 ile Sohbet",
+    "chat_with": "%1 ile sohbete devam et",
+    "new_chat_with": "%1 ile yeni sohbete başla",
     "follow": "Takip Et",
     "unfollow": "Takip etme",
     "more": "Daha Fazla",
@@ -123,5 +124,7 @@
     "info.banned-reason-label": "Gerekçe",
     "info.banned-no-reason": "Gerekçe belirtilmedi.",
     "info.username-history": "Kullanıcı Adı Geçmişi",
-    "info.email-history": "Email Geçmişi"
+    "info.email-history": "Email Geçmişi",
+    "info.moderation-note": "Moderasyon Notu",
+    "info.moderation-note.success": "Moderasyon notu kaydedildi"
 }

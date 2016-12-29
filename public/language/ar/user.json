@@ -23,7 +23,7 @@
     "profile": "الملف الشخصي",
     "profile_views": "عدد المشاهدات",
     "reputation": "السمعة",
-    "favourites": "Bookmarks",
+    "bookmarks": "Bookmarks",
     "watched": "متابع",
     "followers": "المتابعون",
     "following": "يتابع",
@@ -31,7 +31,8 @@
     "signature": "توقيع",
     "birthday": "عيد ميلاد",
     "chat": "محادثة",
-    "chat_with": "Chat with %1",
+    "chat_with": "Continue chat with %1",
+    "new_chat_with": "Start new chat with %1",
     "follow": "تابع",
     "unfollow": "إلغاء المتابعة",
     "more": "المزيد",
@@ -123,5 +124,7 @@
     "info.banned-reason-label": "Reason",
     "info.banned-no-reason": "No reason given.",
     "info.username-history": "Username History",
-    "info.email-history": "Email History"
+    "info.email-history": "Email History",
+    "info.moderation-note": "Moderation Note",
+    "info.moderation-note.success": "Moderation note saved"
 }

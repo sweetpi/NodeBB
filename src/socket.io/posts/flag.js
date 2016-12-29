@@ -11,10 +11,11 @@ var privileges = require('../../privileges');
 var notifications = require('../../notifications');
 var plugins = require('../../plugins');
 var meta = require('../../meta');
+var utils = require('../../../public/src/utils');
 
-module.exports = function(SocketPosts) {
+module.exports = function (SocketPosts) {
 
-	SocketPosts.flag = function(socket, data, callback) {
+	SocketPosts.flag = function (socket, data, callback) {
 		if (!socket.uid) {
 			return callback(new Error('[[error:not-logged-in]]'));
 		}
@@ -42,16 +43,17 @@ module.exports = function(SocketPosts) {
 				post.topic = topicData;
 
 				async.parallel({
-					isAdminOrMod: function(next) {
+					isAdminOrMod: function (next) {
 						privileges.categories.isAdminOrMod(post.topic.cid, socket.uid, next);
 					},
-					userData: function(next) {
+					userData: function (next) {
 						user.getUserFields(socket.uid, ['username', 'reputation', 'banned'], next);
 					}
 				}, next);
 			},
 			function (user, next) {
-				if (!user.isAdminOrMod && parseInt(user.userData.reputation, 10) < parseInt(meta.config['privileges:flag'] || 1, 10)) {
+				var minimumReputation = utils.isNumber(meta.config['privileges:flag']) ? parseInt(meta.config['privileges:flag'], 10) : 1;
+				if (!user.isAdminOrMod && parseInt(user.userData.reputation, 10) < minimumReputation) {
 					return next(new Error('[[error:not-enough-reputation-to-flag]]'));
 				}
 
@@ -66,16 +68,16 @@ module.exports = function(SocketPosts) {
 			},
 			function (next) {
 				async.parallel({
-					post: function(next) {
+					post: function (next) {
 						posts.parsePost(post, next);
 					},
-					admins: function(next) {
+					admins: function (next) {
 						groups.getMembers('administrators', 0, -1, next);
 					},
 					globalMods: function (next) {
 						groups.getMembers('Global Moderators', 0, -1, next);
 					},
-					moderators: function(next) {
+					moderators: function (next) {
 						groups.getMembers('cid:' + post.topic.cid + ':privileges:mods', 0, -1, next);
 					}
 				}, next);
@@ -93,7 +95,7 @@ module.exports = function(SocketPosts) {
 					from: socket.uid,
 					mergeId: 'notifications:user_flagged_post_in|' + data.pid,
 					topicTitle: post.topic.title
-				}, function(err, notification) {
+				}, function (err, notification) {
 					if (err || !notification) {
 						return next(err);
 					}
@@ -105,9 +107,9 @@ module.exports = function(SocketPosts) {
 		], callback);
 	};
 
-	SocketPosts.dismissFlag = function(socket, pid, callback) {
+	SocketPosts.dismissFlag = function (socket, pid, callback) {
 		if (!pid || !socket.uid) {
-			return callback('[[error:invalid-data]]');
+			return callback(new Error('[[error:invalid-data]]'));
 		}
 		async.waterfall([
 			function (next) {
@@ -122,7 +124,7 @@ module.exports = function(SocketPosts) {
 		], callback);
 	};
 
-	SocketPosts.dismissAllFlags = function(socket, data, callback) {
+	SocketPosts.dismissAllFlags = function (socket, data, callback) {
 		async.waterfall([
 			function (next) {
 				user.isAdminOrGlobalMod(socket.uid, next);
@@ -136,31 +138,35 @@ module.exports = function(SocketPosts) {
 		], callback);
 	};
 
-	SocketPosts.updateFlag = function(socket, data, callback) {
+	SocketPosts.updateFlag = function (socket, data, callback) {
 		if (!data || !(data.pid && data.data)) {
-			return callback('[[error:invalid-data]]');
+			return callback(new Error('[[error:invalid-data]]'));
 		}
 
 		var payload = {};
 
 		async.waterfall([
 			function (next) {
-				user.isAdminOrGlobalMod(socket.uid, next);
+				async.parallel([
+					async.apply(user.isAdminOrGlobalMod, socket.uid),
+					async.apply(user.isModeratorOfAnyCategory, socket.uid)
+				], function (err, results) {
+					next(err, results[0] || results[1]);
+				});
 			},
-			function (isAdminOrGlobalModerator, next) {
-				if (!isAdminOrGlobalModerator) {
+			function (allowed, next) {
+				if (!allowed) {
 					return next(new Error('[[no-privileges]]'));
 				}
 
 				// Translate form data into object
-				payload = data.data.reduce(function(memo, cur) {
+				payload = data.data.reduce(function (memo, cur) {
 					memo[cur.name] = cur.value;
 					return memo;
 				}, payload);
 
-				next(null, socket.uid, data.pid, payload);
-			},
-			async.apply(posts.updateFlagData)
+				posts.updateFlagData(socket.uid, data.pid, payload, next);
+			}
 		], callback);
-	}
+	};
 };

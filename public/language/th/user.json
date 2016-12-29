@@ -23,7 +23,7 @@
     "profile": "รายละเอียด",
     "profile_views": "ดูข้อมูลส่วนตัว",
     "reputation": "ชื่อเสียง",
-    "favourites": "Bookmarks",
+    "bookmarks": "Bookmarks",
     "watched": "ดูแล้ว",
     "followers": "คนติดตาม",
     "following": "ติดตาม",
@@ -31,7 +31,8 @@
     "signature": "ลายเซ็น",
     "birthday": "วันเกิด",
     "chat": "แชท",
-    "chat_with": "Chat with %1",
+    "chat_with": "Continue chat with %1",
+    "new_chat_with": "Start new chat with %1",
     "follow": "ติดตาม",
     "unfollow": "เลิกติดตาม",
     "more": "More",
@@ -123,5 +124,7 @@
     "info.banned-reason-label": "Reason",
     "info.banned-no-reason": "No reason given.",
     "info.username-history": "Username History",
-    "info.email-history": "Email History"
+    "info.email-history": "Email History",
+    "info.moderation-note": "Moderation Note",
+    "info.moderation-note.success": "Moderation note saved"
 }

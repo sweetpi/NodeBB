@@ -1,31 +1,31 @@
 "use strict";
 /*global config, define, app, socket, ajaxify, bootbox, templates, Chart, utils */
 
-define('admin/advanced/errors', ['Chart'], function(Chart) {
+define('admin/advanced/errors', ['Chart', 'translator'], function (Chart, translator) {
 	var Errors = {};
 
-	Errors.init = function() {
+	Errors.init = function () {
 		Errors.setupCharts();
 
 		$('[data-action="clear"]').on('click', Errors.clear404);
 	};
 
-	Errors.clear404 = function() {
-		bootbox.confirm('Are you sure you wish to clear the 404 error logs?', function(ok) {
+	Errors.clear404 = function () {
+		bootbox.confirm('[[admin/advanced/errors:clear404-confirm]]', function (ok) {
 			if (ok) {
-				socket.emit('admin.errors.clear', {}, function(err) {
+				socket.emit('admin.errors.clear', {}, function (err) {
 					if (err) {
 						return app.alertError(err.message);
 					}
 
 					ajaxify.refresh();
-					app.alertSuccess('"404 Not Found" errors cleared');
+					app.alertSuccess('[[admin/advanced/errors:clear404-success]]');
 				});
 			}
 		});
 	};
 
-	Errors.setupCharts = function() {
+	Errors.setupCharts = function () {
 		var notFoundCanvas = document.getElementById('not-found'),
 			tooBusyCanvas = document.getElementById('toobusy'),
 			dailyLabels = utils.getDaysArray();

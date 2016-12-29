@@ -3,15 +3,16 @@
 var async = require('async');
 var winston = require('winston');
 var path = require('path');
+var nconf = require('nconf');
 
 var user = require('../../user');
 var plugins = require('../../plugins');
 
-module.exports = function(SocketUser) {
+module.exports = function (SocketUser) {
 
-	SocketUser.changePicture = function(socket, data, callback) {
+	SocketUser.changePicture = function (socket, data, callback) {
 		if (!socket.uid) {
-			return callback('[[error:invalid-uid]]');
+			return callback(new Error('[[error:invalid-uid]]'));
 		}
 
 		if (!data) {
@@ -37,7 +38,7 @@ module.exports = function(SocketUser) {
 							uid: socket.uid,
 							type: type,
 							picture: undefined
-						}, function(err, returnData) {
+						}, function (err, returnData) {
 							if (err) {
 								return next(err);
 							}
@@ -53,22 +54,24 @@ module.exports = function(SocketUser) {
 		], callback);
 	};
 
-	SocketUser.uploadProfileImageFromUrl = function(socket, data, callback) {
+	SocketUser.uploadProfileImageFromUrl = function (socket, data, callback) {
 		if (!socket.uid || !data.url || !data.uid) {
 			return callback(new Error('[[error:invalid-data]]'));
 		}
-
-		user.isAdminOrSelf(socket.uid, data.uid, function(err) {
-			if (err) {
-				return callback(err);
+		async.waterfall([
+			function (next) {
+				user.isAdminOrSelf(socket.uid, data.uid, next);
+			},
+			function (next) {
+				user.uploadFromUrl(data.uid, data.url, next);
+			},
+			function (uploadedImage, next) {
+				next(null, uploadedImage ? uploadedImage.url : null);
 			}
-			user.uploadFromUrl(data.uid, data.url, function(err, uploadedImage) {
-				callback(err, uploadedImage ? uploadedImage.url : null);
-			});
-		});
+		], callback);
 	};
 
-	SocketUser.removeUploadedPicture = function(socket, data, callback) {
+	SocketUser.removeUploadedPicture = function (socket, data, callback) {
 		if (!socket.uid || !data.uid) {
 			return callback(new Error('[[error:invalid-data]]'));
 		}
@@ -80,13 +83,16 @@ module.exports = function(SocketUser) {
 			function (next) {
 				user.getUserFields(data.uid, ['uploadedpicture', 'picture'], next);
 			},
-			function(userData, next) {
-				if (!userData.uploadedpicture.startsWith('http')) {
-					require('fs').unlink(path.join(__dirname, '../../../public', userData.uploadedpicture), function(err) {
-						if (err) {
-							winston.error(err);
-						}
-					});
+			function (userData, next) {
+				if (userData.uploadedpicture && !userData.uploadedpicture.startsWith('http')) {
+					var pathToFile = path.join(nconf.get('base_dir'), 'public', userData.uploadedpicture);
+					if (pathToFile.startsWith(path.join(nconf.get('base_dir'), nconf.get('upload_path')))) {
+						require('fs').unlink(pathToFile, function (err) {
+							if (err) {
+								winston.error(err);
+							}
+						});
+					}
 				}
 
 				user.setUserFields(data.uid, {
@@ -97,7 +103,7 @@ module.exports = function(SocketUser) {
 		], callback);
 	};
 
-	SocketUser.getProfilePictures = function(socket, data, callback) {
+	SocketUser.getProfilePictures = function (socket, data, callback) {
 		if (!data || !data.uid) {
 			return callback(new Error('[[error:invalid-data]]'));
 		}
@@ -108,7 +114,7 @@ module.exports = function(SocketUser) {
 				pictures: []
 			}),
 			uploaded: async.apply(user.getUserField, data.uid, 'uploadedpicture')
-		}, function(err, data) {
+		}, function (err, data) {
 			if (err) {
 				return callback(err);
 			}
@@ -122,6 +128,6 @@ module.exports = function(SocketUser) {
 			}
 
 			callback(null, data.list.pictures);
-		})
+		});
 	};
 };

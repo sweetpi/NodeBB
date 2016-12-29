@@ -35,7 +35,7 @@ require('./maintenance')(middleware);
 require('./user')(middleware);
 require('./headers')(middleware);
 
-middleware.authenticate = function(req, res, next) {
+middleware.authenticate = function (req, res, next) {
 	if (req.user) {
 		return next();
 	} else if (plugins.hasListeners('action:middleware.authenticate')) {
@@ -49,7 +49,31 @@ middleware.authenticate = function(req, res, next) {
 	controllers.helpers.notAllowed(req, res);
 };
 
-middleware.pageView = function(req, res, next) {
+middleware.ensureSelfOrGlobalPrivilege = function (req, res, next) {
+	/*
+		The "self" part of this middleware hinges on you having used
+		middleware.exposeUid prior to invoking this middleware.
+	*/
+	if (req.user) {
+		if (req.user.uid === res.locals.uid) {
+			return next();
+		}
+
+		user.isAdminOrGlobalMod(req.uid, function (err, ok) {
+			if (err) {
+				return next(err);
+			} else if (ok) {
+				return next();
+			} else {
+				controllers.helpers.notAllowed(req, res);
+			}
+		});
+	} else {
+		controllers.helpers.notAllowed(req, res);
+	}
+};
+
+middleware.pageView = function (req, res, next) {
 	analytics.pageView({
 		ip: req.ip,
 		path: req.path,
@@ -72,16 +96,16 @@ middleware.pageView = function(req, res, next) {
 };
 
 
-middleware.pluginHooks = function(req, res, next) {
-	async.each(plugins.loadedHooks['filter:router.page'] || [], function(hookObj, next) {
+middleware.pluginHooks = function (req, res, next) {
+	async.each(plugins.loadedHooks['filter:router.page'] || [], function (hookObj, next) {
 		hookObj.method(req, res, next);
-	}, function() {
+	}, function () {
 		// If it got here, then none of the subscribed hooks did anything, or there were no hooks
 		next();
 	});
 };
 
-middleware.validateFiles = function(req, res, next) {
+middleware.validateFiles = function (req, res, next) {
 	if (!Array.isArray(req.files.files) || !req.files.files.length) {
 		return next(new Error(['[[error:invalid-files]]']));
 	}
@@ -89,12 +113,12 @@ middleware.validateFiles = function(req, res, next) {
 	next();
 };
 
-middleware.prepareAPI = function(req, res, next) {
+middleware.prepareAPI = function (req, res, next) {
 	res.locals.isAPI = true;
 	next();
 };
 
-middleware.routeTouchIcon = function(req, res) {
+middleware.routeTouchIcon = function (req, res) {
 	if (meta.config['brand:touchIcon'] && validator.isURL(meta.config['brand:touchIcon'])) {
 		return res.redirect(meta.config['brand:touchIcon']);
 	} else {
@@ -104,7 +128,7 @@ middleware.routeTouchIcon = function(req, res) {
 	}
 };
 
-middleware.privateTagListing = function(req, res, next) {
+middleware.privateTagListing = function (req, res, next) {
 	if (!req.user && parseInt(meta.config.privateTagListing, 10) === 1) {
 		controllers.helpers.notAllowed(req, res);
 	} else {
@@ -112,11 +136,11 @@ middleware.privateTagListing = function(req, res, next) {
 	}
 };
 
-middleware.exposeGroupName = function(req, res, next) {
+middleware.exposeGroupName = function (req, res, next) {
 	expose('groupName', groups.getGroupNameByGroupSlug, 'slug', req, res, next);
 };
 
-middleware.exposeUid = function(req, res, next) {
+middleware.exposeUid = function (req, res, next) {
 	expose('uid', user.getUidByUserslug, 'userslug', req, res, next);
 };
 
@@ -124,7 +148,7 @@ function expose(exposedField, method, field, req, res, next) {
 	if (!req.params.hasOwnProperty(field)) {
 		return next();
 	}
-	method(req.params[field], function(err, id) {
+	method(req.params[field], function (err, id) {
 		if (err) {
 			return next(err);
 		}
@@ -134,7 +158,7 @@ function expose(exposedField, method, field, req, res, next) {
 	});
 }
 
-middleware.privateUploads = function(req, res, next) {
+middleware.privateUploads = function (req, res, next) {
 	if (req.user || parseInt(meta.config.privateUploads, 10) !== 1) {
 		return next();
 	}
@@ -144,7 +168,7 @@ middleware.privateUploads = function(req, res, next) {
 	next();
 };
 
-middleware.busyCheck = function(req, res, next) {
+middleware.busyCheck = function (req, res, next) {
 	if (global.env === 'production' && (!meta.config.hasOwnProperty('eventLoopCheckEnabled') || parseInt(meta.config.eventLoopCheckEnabled, 10) === 1) && toobusy()) {
 		analytics.increment('errors:503');
 		res.status(503).type('text/html').sendFile(path.join(__dirname, '../../public/503.html'));
@@ -153,30 +177,30 @@ middleware.busyCheck = function(req, res, next) {
 	}
 };
 
-middleware.applyBlacklist = function(req, res, next) {
-	meta.blacklist.test(req.ip, function(err) {
+middleware.applyBlacklist = function (req, res, next) {
+	meta.blacklist.test(req.ip, function (err) {
 		next(err);
 	});
 };
 
-middleware.processLanguages = function(req, res, next) {
-	var code = req.params.code;
-	var key = req.path.match(/[\w]+\.json/);
+middleware.getTranslation = function (req, res, next) {
+	var language = req.params.language;
+	var namespace = req.params.namespace;
 
-	if (code && key) {
-		languages.get(code, key[0], function(err, language) {
+	if (language && namespace) {
+		languages.get(language, namespace, function (err, translations) {
 			if (err) {
 				return next(err);
 			}
 
-			res.status(200).json(language);
+			res.status(200).json(translations);
 		});
 	} else {
 		res.status(404).json('{}');
 	}
 };
 
-middleware.processTimeagoLocales = function(req, res, next) {
+middleware.processTimeagoLocales = function (req, res, next) {
 	var fallback = req.path.indexOf('-short') === -1 ? 'jquery.timeago.en.js' : 'jquery.timeago.en-short.js',
 		localPath = path.join(__dirname, '../../public/vendor/jquery/timeago/locales', req.path),
 		exists;
