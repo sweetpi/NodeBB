@@ -147,7 +147,7 @@ Topics.getTopicsByTids = function (tids, uid, callback) {
 
 			var users = _.zipObject(uids, results.users);
 			var categories = _.zipObject(cids, results.categories);
-			var mainPosts = _.object(tids, results.mainPosts);
+			var mainPosts = _.zipObject(tids, results.mainPosts);
 
 			for (var i = 0; i < topics.length; i += 1) {
 				if (topics[i]) {
