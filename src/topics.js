@@ -131,11 +131,15 @@ var social = require('./social');
 					tags: function (next) {
 						Topics.getTopicsTagsObjects(tids, next);
 					},
+					mainPosts: function(next) {
+						Topics.getMainPosts(tids, uid, next);
+					}
 				}, next);
 			},
 			function (results, next) {
 				var users = _.object(uids, results.users);
 				var categories = _.object(cids, results.categories);
+				var mainPosts = _.object(tids, results.mainPosts);
 
 				for (var i = 0; i < topics.length; i += 1) {
 					if (topics[i]) {
@@ -143,6 +147,7 @@ var social = require('./social');
 						topics[i].user = users[topics[i].uid];
 						topics[i].teaser = results.teasers[i];
 						topics[i].tags = results.tags[i];
+						topics[i].votes = (mainPosts[topics[i].tid] ? mainPosts[topics[i].tid].votes : '?');
 
 						topics[i].isOwner = parseInt(topics[i].uid, 10) === parseInt(uid, 10);
 						topics[i].pinned = parseInt(topics[i].pinned, 10) === 1;
